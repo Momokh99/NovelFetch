@@ -1,4 +1,3 @@
-import time
 import json
 import os
 import urllib.parse
@@ -6,10 +5,7 @@ import urllib.parse
 import requests
 from bs4 import BeautifulSoup
 
-if __name__ == "__main__":
-    keyword = input("Search: ")
-    encoded_keyword = urllib.parse.quote(keyword)
-    url = f"https://novelbin.com/search?keyword={encoded_keyword}"
+import time
 
 
 headers = {
@@ -50,12 +46,16 @@ def pick_from_list(items, label_key="title"):
     for i, item in enumerate(items, 1):
         print(f"{i}. {item[label_key]}")
     while True:
+        choice = input("Pick a number (q to cancel): ").strip().lower()
+        if choice == "q":
+            return None
         try:
-            choise = int(input("pick a number : ")) - 1
-            if 0 <= choise < len(items):
-                return items[choise]
+            idx = int(choice) - 1
+            if 0 <= idx < len(items):
+                return items[idx]
         except ValueError:
-            print("Invalid. Try again")
+            pass
+        print("Invalid. Try again")
 
 
 def fetch_chapters(slug):
@@ -90,11 +90,11 @@ def save_chapter(url, title, slug):
     path = f"novels/{slug}/{safe_title}.txt"
     if os.path.exists(path):
         return False
+    os.makedirs(os.path.dirname(path), exist_ok=True)
     soup = fetch_url(url)
     main_cont = soup.find("div", class_="chr-c")
     if not main_cont:
         return False
-    os.makedirs(f"novels/{slug}", exist_ok=True)
     with open(path, "w", encoding="utf-8") as f:
         for p in main_cont.find_all("p"):
             f.write(p.text + "\n")
@@ -103,10 +103,9 @@ def save_chapter(url, title, slug):
 
 def download_novel(slug):
     chapters = fetch_chapters(slug)
-    print(f"Downloading {len(chapters)} chapters to novels/{slug}/...")
     for chapter in chapters:
         if save_chapter(chapter["url"], chapter["title"], slug):
-            print(f"  saved: {chapter['title']}")
+            print(f"saved: {chapter['title']}")
         else:
-            print(f"  skipped: {chapter['title']}")
-        time.sleep(0.5)
+            print(f"skipped: {chapter['title']}")
+        time.sleep(1)

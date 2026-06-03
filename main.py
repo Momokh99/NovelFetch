@@ -1,6 +1,24 @@
+import sys
+import termios
+import tty
 import urllib.parse
 
 import finder
+
+
+def getch(prompt=""):
+    print(prompt, end="", flush=True)
+    if not sys.stdin.isatty():
+        return input().strip()
+    fd = sys.stdin.fileno()
+    old = termios.tcgetattr(fd)
+    try:
+        tty.setraw(fd)
+        ch = sys.stdin.read(1)
+    finally:
+        termios.tcsetattr(fd, termios.TCSADRAIN, old)
+    print(ch)
+    return ch
 
 Banner = """
      ███╗   ██╗ ██████╗ ██╗   ██╗███████╗██╗     ██████╗ ██╗███╗   ██╗
@@ -11,8 +29,8 @@ Banner = """
      ╚═╝  ╚═══╝ ╚═════╝   ╚═══╝  ╚══════╝╚══════╝╚═════╝ ╚═╝╚═╝  ╚═══╝
      ════════════════════════════════════════════════════════════════════
                          CLI Novel Reader v1
-
-
+"""
+menu = """
 ╔═══════════════════════════════════════════════╗
 ║  (1) Search by name                           ║
 ║  (2) Paste novel link                         ║
@@ -52,7 +70,7 @@ def read_and_navigate(chapters, start_index):
         print(f"  {chapters[i]['title']}")
         print("=" * 60)
         finder.read_chapter(chapters[i]["url"])
-        answer = input("(n)ext, (p)revious, (q)uit: ").strip().lower()
+        answer = getch("(n)ext, (p)revious, (q)uit: ").lower()
         if answer == "n":
             i += 1
         elif answer == "p":
@@ -71,6 +89,8 @@ def search_novel():
         print("No novels found.")
         return
     novel = finder.pick_from_list(novels, "title")
+    if novel is None:
+        return
     browse_novel(novel["slug"])
 
 
@@ -94,6 +114,8 @@ def browse_list(key):
         print("No novels found.")
         return
     novel = finder.pick_from_list(novels, "title")
+    if novel is None:
+        return
     browse_novel(novel["slug"])
 
 
@@ -119,6 +141,8 @@ def browse_genre():
         return
     print()
     novel = finder.pick_from_list(results, "title")
+    if novel is None:
+        return
     browse_novel(novel["slug"])
 
 
@@ -129,14 +153,17 @@ def browse_novel(slug):
         return
     print(f"\nChapters (1-{len(chapters)}):")
     chapter = finder.pick_from_list(chapters, "title")
+    if chapter is None:
+        return
     read_and_navigate(chapters, chapter["num"] - 1)
 
 
 def main():
     print(Banner)
     while True:
-        print("\n" + "─" * 50)
-        choice = input(">> ").strip()
+        print(menu)
+        print("─" * 50)
+        choice = getch(">> ")
         if choice == "q":
             print("Goodbye!")
             break
