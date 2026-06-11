@@ -1,24 +1,6 @@
-import sys
-import termios
-import tty
 import urllib.parse
 
 import finder
-
-
-def getch(prompt=""):
-    print(prompt, end="", flush=True)
-    if not sys.stdin.isatty():
-        return input().strip()
-    fd = sys.stdin.fileno()
-    old = termios.tcgetattr(fd)
-    try:
-        tty.setraw(fd)
-        ch = sys.stdin.read(1)
-    finally:
-        termios.tcsetattr(fd, termios.TCSADRAIN, old)
-    print(ch)
-    return ch
 
 Banner = """
      ███╗   ██╗ ██████╗ ██╗   ██╗███████╗██╗     ██████╗ ██╗███╗   ██╗
@@ -28,7 +10,7 @@ Banner = """
      ██║ ╚████║╚██████╔╝ ╚████╔╝ ███████╗███████╗██████╔╝██║██║ ╚████║
      ╚═╝  ╚═══╝ ╚═════╝   ╚═══╝  ╚══════╝╚══════╝╚═════╝ ╚═╝╚═╝  ╚═══╝
      ════════════════════════════════════════════════════════════════════
-                         CLI Novel Reader v1
+                          CLI Novel Reader v1
 """
 menu = """
 ╔═══════════════════════════════════════════════╗
@@ -62,21 +44,6 @@ BROWSE_URLS = {
     "6": "https://novelbin.com/sort/completed",
 }
 
-
-def read_and_navigate(chapters, start_index):
-    i = start_index
-    while 0 <= i < len(chapters):
-        print("=" * 60)
-        print(f"  {chapters[i]['title']}")
-        print("=" * 60)
-        finder.read_chapter(chapters[i]["url"])
-        answer = getch("(n)ext, (p)revious, (q)uit: ").lower()
-        if answer == "n":
-            i += 1
-        elif answer == "p":
-            i -= 1
-        elif answer == "q":
-            break
 
 
 def search_novel():
@@ -155,7 +122,8 @@ def browse_novel(slug):
     chapter = finder.pick_from_list(chapters, "title")
     if chapter is None:
         return
-    read_and_navigate(chapters, chapter["num"] - 1)
+    from tui import NovelReader
+    NovelReader(chapters, slug, start=chapter["num"] - 1).run()
 
 
 def main():
@@ -163,7 +131,7 @@ def main():
     while True:
         print(menu)
         print("─" * 50)
-        choice = getch(">> ")
+        choice = input(">> ").strip()
         if choice == "q":
             print("Goodbye!")
             break

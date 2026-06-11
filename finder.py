@@ -1,11 +1,10 @@
 import json
 import os
+import time
 import urllib.parse
 
 import requests
 from bs4 import BeautifulSoup
-
-import time
 
 
 headers = {
@@ -15,8 +14,8 @@ headers = {
 }
 
 
-def fetch_url(url):
-    response = requests.get(url, headers=headers)
+def fetch_url(url, params=None):
+    response = requests.get(url, headers=headers, params=params)
     return BeautifulSoup(response.text, "html.parser")
 
 
@@ -59,15 +58,15 @@ def pick_from_list(items, label_key="title"):
 
 
 def fetch_chapters(slug):
-    url = f"https://novelbin.com/b/{slug}"
-    soup = fetch_url(url)
-    items = soup.select("li[data-first-chapter-item] > a")
+    soup = fetch_url("https://novelbin.com/ajax/chapter-archive", params={"novelId": slug})
+    items = soup.select("li > a")
     chapters = []
     for i, a in enumerate(items, 1):
+        title = a.get("title") or a.select_one(".nchr-text").text.strip()
         chapters.append(
             {
                 "num": i,
-                "title": a.select_one(".nchr-text").text.strip(),
+                "title": title,
                 "url": a["href"],
             }
         )
@@ -75,14 +74,11 @@ def fetch_chapters(slug):
 
 
 def read_chapter(url):
-    """Prints the content of a chapter page."""
     soup = fetch_url(url)
     main_cont = soup.find("div", class_="chr-c")
     if not main_cont:
-        print("Could not find chapter content.")
-        return
-    for p in main_cont.find_all("p"):
-        print(p.text)
+        return None
+    return [p.text for p in main_cont.find_all("p")]
 
 
 def save_chapter(url, title, slug):
