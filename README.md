@@ -1,59 +1,45 @@
 # NovelFetch
 
-A terminal-based novel reader for novelbin.com. Search, browse, and read chapters without ads, JavaScript, or distractions.
+A TUI novel reader for novelbin.com. Browse, search, download, and read chapters — all in the terminal.
 
 ```
      ███╗   ██╗ ██████╗ ██╗   ██╗███████╗██╗     ██████╗ ██╗███╗   ██╗
      ████╗  ██║██╔═══██╗██║   ██║██╔════╝██║     ██╔══██╗██║████╗  ██║
-     ██╔██╗ ██║██║   ██║██║   ██║█████╗  ██║     ██████╔╝██║██╔██╗ ██║
+     ██╔██╗ ██║██║   ██║██║   ██║█████╗  ██║     ██████╔╝██║██╔██╗ ██╗
      ██║╚██╗██║██║   ██║╚██╗ ██╔╝██╔══╝  ██║     ██╔══██╗██║██║╚██╗██║
      ██║ ╚████║╚██████╔╝ ╚████╔╝ ███████╗███████╗██████╔╝██║██║ ╚████║
      ╚═╝  ╚═══╝ ╚═════╝   ╚═══╝  ╚══════╝╚══════╝╚═════╝ ╚═╝╚═╝  ╚═══╝
      ════════════════════════════════════════════════════════════════════
-                          CLI Novel Reader v1
+                          TUI Novel Reader v2
 ```
 
-```
-╔═══════════════════════════════════════════════╗
-║  (1) Search by name                           ║
-║  (2) Paste novel link                         ║
-║  (3) Hot novels                               ║
-║  (4) Latest releases                          ║
-║  (5) Most popular                             ║
-║  (6) Completed novels                         ║
-║  (7) Browse by genre                          ║
-║  (8) Download novel                           ║
-║  (q) Quit                                     ║
-╚═══════════════════════════════════════════════╝
-```
+![menu](https://img.shields.io/badge/built%20with-Textual-blue)
 
 ---
 
-## What It Does
+## Features
 
-- Search by title or paste a link
-- Browse by genre (10 supported), hot novels, latest releases, completions
-- Read chapters with next/previous navigation
-- Download chapters as .txt files
+- **Search** — real-time search with 750ms debounce; paginate with `n`/`p`
+- **Browse** — hot, latest, most popular, completed, and 10 genres
+- **Paste link** — open any novel by URL or slug
+- **My Library** — browse locally downloaded novels, resume reading, delete
+- **Reader** — next/prev (`n`/`p`), jump to chapter (`j`), download current (`d`)
+- **Progress tracking** — auto-saves last chapter; ✓ marks read chapters
+- **Download all** — batch download with progress bar
+- **Translation** — Google Translate (12 languages); Arabic RTL layout
+- **Delete with safety** — double-press `x` to confirm deletion
 
-No ads. No popups. No bloat. Just text.
+Key bindings in the reader:
 
----
-
-## Why Build This?
-
-I read novels. A lot. And I got tired of browser tabs — slow loading, ads, popups, clutter. I just wanted the text.
-
-So I built this. For fun. For myself.
-
-What started as a 30-line script turned into 300+ lines across two files after too many nights debugging HTML selectors I didn't understand and `<template>` tags I had never seen before.
-
-The hardest parts:
-- **Dynamic HTML selectors** — every page type used slightly different classes. `.list.list-novel > .row` was the one selector that finally worked everywhere.
-- **`<template>` tag parsing** — the chapter list hid inside a `<template>` tag. BeautifulSoup handled it strangely. `li[data-first-chapter-item]` was the fix after hours of trial and error.
-- **Error handling** — users type "abc" instead of numbers. Networks fail mid-fetch. Chapters have no content. Every edge case had to be caught.
-
-It was frustrating. It was also worth it. Now I read more because of it.
+| Key | Action |
+|-----|--------|
+| `n` / `p` | Next / Prev chapter |
+| `j` | Jump to chapter number |
+| `d` | Download current chapter |
+| `t` | Translate to language |
+| `r` | Revert to original text |
+| `h` | Go to main menu |
+| `q` | Back to chapter list |
 
 ---
 
@@ -64,7 +50,7 @@ git clone https://github.com/Momokh99/NovelFetch.git
 cd NovelFetch
 python -m venv venv
 source venv/bin/activate  # Windows: venv\Scripts\activate
-pip install requests beautifulsoup4
+pip install textual requests beautifulsoup4 deep-translator
 python main.py
 ```
 
@@ -73,21 +59,24 @@ python main.py
 ## How It Works
 
 **Architecture:**
-- `finder.py` — Fetches and parses HTML, extracts novels/chapters, downloads
-- `main.py` — Terminal menu, user interaction, navigation flow
+- `finder.py` — HTTP fetching, HTML parsing, chapter extraction, file saving
+- `tui.py` — Textual TUI app: screens, widgets, navigation, translation, persistence
+- `main.py` — Entry point (boots the TUI app)
+- `novels/` — Downloaded chapters and JSON state (`progress.json`, `settings.json`)
 
 ---
 
 ## Roadmap
 
-- Resume from last chapter (save/load a JSON file)
-- Better text formatting (italics, line breaks, spacing)
-- Search filters (genre, status, rating)
-- Proper CLI with argparse (command-based, no menus)
-- Pagination for full chapter lists
-- TUI mode (curses/Textual interface)
-- Multi-source scraping (RoyalRoad, Webnovel, ScribbleHub)
-- Translation support (Google Translate / LibreTranslate API)
+- [x] TUI mode (Textual interface)
+- [x] Resume from last chapter (progress.json)
+- [x] Search with auto-type and pagination
+- [x] Translation (Google Translate, 12 languages, RTL support)
+- [ ] Better text formatting (italics, line breaks, spacing)
+- [ ] Search filters (genre, status, rating)
+- [ ] Multi-source scraping (RoyalRoad, Webnovel, ScribbleHub)
+- [ ] Offline reading mode
+- [ ] Reading history across sessions
 
 ---
 
