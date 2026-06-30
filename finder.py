@@ -26,16 +26,19 @@ def extract_novel_rows(soup):
         title_tag = row.select_one("h3.novel-title a")
         author_tag = row.select_one("span.author")
         chapter_tag = row.select_one("span.chr-text")
+
         if not title_tag:
             continue
         href = title_tag["href"]
         slug = href.split("/b/")[-1]
+        cover = f"https://images.novelbin.me/novel/{slug}.jpg"
         results.append(
             {
                 "title": title_tag.get("title") or title_tag.text.strip(),
                 "author": author_tag.text.strip() if author_tag else "Unknown",
                 "slug": slug,
                 "latest": chapter_tag.text.strip() if chapter_tag else "",
+                "cover": cover,
             }
         )
     return results
