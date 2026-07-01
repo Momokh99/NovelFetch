@@ -1,1 +1,5 @@
-print("sources package initialized")
+from sources.royalroad import RoyalRoadSource
+
+REGISTRY = {
+    "royalroad": RoyalRoadSource(),
+}
