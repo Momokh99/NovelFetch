@@ -7,7 +7,7 @@ import asyncio
 import json
 import os
 import urllib.parse
-import finder
+from sources import REGISTRY
 from deep_translator import GoogleTranslator
 
 GENRES = {
@@ -17,17 +17,17 @@ GENRES = {
     "thriller": "Thriller",
 }
 
-BROWSE_URLS = {
-    "hot": "https://novelbin.com/sort/top-hot-novel",
-    "latest": "https://novelbin.com/sort/latest",
-    "popular": "https://novelbin.com/sort/top-view-novel",
-    "completed": "https://novelbin.com/sort/completed",
-}
-
 PROGRESS_FILE = "novels/progress.json"
 
 def _slug_to_title(slug):
-    return slug.replace("-", " ").title()
+    raw = slug.split(":", 1)[-1] if ":" in slug else slug
+    return raw.replace("-", " ").title()
+
+def _get_source(slug):
+    source_name = slug.split(":", 1)[0] if ":" in slug else None
+    if source_name:
+        return REGISTRY.get(source_name)
+    return None
 
 def _chapter_sort_key(fname):
     import re
@@ -153,6 +153,9 @@ class MainMenu(Screen):
      ██║ ╚████║╚██████╔╝ ╚████╔╝ ███████╗███████╗██████╔╝██║██║ ╚████║
      ╚═╝  ╚═══╝ ╚═════╝   ╚═══╝  ╚══════╝╚══════╝╚═════╝ ╚═╝╚═╝  ╚═══╝""", classes="banner")
         with Vertical():
+            yield Static("Source:", classes="title")
+            yield RadioSet(*[RadioButton(s.label) for s in REGISTRY.values()], id="source-selector")
+            yield Static("Action:", classes="title")
             yield RadioSet(
                 RadioButton("Search by name"),
                 RadioButton("Paste novel link"),
@@ -162,35 +165,37 @@ class MainMenu(Screen):
                 RadioButton("Completed novels"),
                 RadioButton("Browse by genre"),
                 RadioButton("My Library"),
+                id="action-selector"
             )
             yield LoadingIndicator(classes="loading")
         yield Footer()
 
     async def on_radio_set_changed(self, event: RadioSet.Changed):
+        if event.radio_set.id == "source-selector":
+            sources = list(REGISTRY.values())
+            if event.index < len(sources):
+                self.app.current_source = sources[event.index]
+            return
         idx = event.index
         if idx in (2, 3, 4, 5, 6):
-            self.query_one(RadioSet).disabled = True
+            self.query_one("#action-selector", RadioSet).disabled = True
             self.query_one(LoadingIndicator).set_class(True, "-visible")
             try:
-                if idx == 2:
-                    soup = await asyncio.to_thread(finder.fetch_url, BROWSE_URLS["hot"])
-                    self.app.push_screen(NovelListScreen(finder.extract_novel_rows(soup)))
-                elif idx == 3:
-                    soup = await asyncio.to_thread(finder.fetch_url, BROWSE_URLS["latest"])
-                    self.app.push_screen(NovelListScreen(finder.extract_novel_rows(soup)))
-                elif idx == 4:
-                    soup = await asyncio.to_thread(finder.fetch_url, BROWSE_URLS["popular"])
-                    self.app.push_screen(NovelListScreen(finder.extract_novel_rows(soup)))
-                elif idx == 5:
-                    soup = await asyncio.to_thread(finder.fetch_url, BROWSE_URLS["completed"])
-                    self.app.push_screen(NovelListScreen(finder.extract_novel_rows(soup)))
-                elif idx == 6:
-                    self.app.push_screen(GenreScreen())
+                source = self.app.current_source
+                key = ["hot", "latest", "popular", "completed"][idx - 2]
+                if key in source.browse_urls:
+                    soup = await asyncio.to_thread(source.fetch_url, source.browse_urls[key])
+                    novels = source.extract_novel_rows(soup)
+                else:
+                    first_key = list(source.browse_urls.keys())[0]
+                    soup = await asyncio.to_thread(source.fetch_url, source.browse_urls[first_key])
+                    novels = source.extract_novel_rows(soup)
+                self.app.push_screen(NovelListScreen(novels, source=source))
             finally:
                 self.query_one(LoadingIndicator).set_class(False, "-visible")
-                self.query_one(RadioSet).disabled = False
+                self.query_one("#action-selector", RadioSet).disabled = False
         elif idx == 0:
-            self.app.push_screen(SearchScreen())
+            self.app.push_screen(SearchScreen(source=self.app.current_source))
         elif idx == 1:
             self.app.push_screen(PasteLinkScreen())
         elif idx == 7:
@@ -200,10 +205,10 @@ class MainMenu(Screen):
         self.app.exit()
 
     def action_next_option(self):
-        self.query_one(RadioSet).action_next_button()
+        self.query_one("#action-selector", RadioSet).action_next_button()
 
     def action_prev_option(self):
-        self.query_one(RadioSet).action_previous_button()
+        self.query_one("#action-selector", RadioSet).action_previous_button()
 
 
 class SearchScreen(Screen):
@@ -213,8 +218,9 @@ class SearchScreen(Screen):
         Binding("p", "prev_page", "Prev"),
     ]
 
-    def __init__(self):
+    def __init__(self, source):
         super().__init__()
+        self.source = source
         self._query = ""
         self._page = 1
         self._total_pages = 1
@@ -262,18 +268,11 @@ class SearchScreen(Screen):
         inp.disabled = True
         self.query_one(LoadingIndicator).set_class(True, "-visible")
         try:
-            soup = await asyncio.to_thread(
-                finder.fetch_url, "https://novelbin.com/search",
-                {"keyword": self._query, "page": self._page}
-            )
-            novels = finder.extract_novel_rows(soup)
+            novels, total_pages = await asyncio.to_thread(self.source.search, self._query, self._page)
+            for n in novels:
+                n["slug"] = self.source.qualify_slug(n["slug"])
             self._results = novels
-            pag = soup.select_one(".pagination")
-            if pag:
-                nums = [int(a.text.strip()) for a in pag.select("a") if a.text.strip().isdigit()]
-                self._total_pages = max(nums) if nums else 1
-            else:
-                self._total_pages = 1 if novels else 0
+            self._total_pages = total_pages
             self._show_results(novels)
         except Exception:
             self.notify("Search failed. Check internet.", timeout=3)
@@ -308,9 +307,9 @@ class SearchScreen(Screen):
         self.query_one(LoadingIndicator).set_class(True, "-visible")
         try:
             slug = self._results[idx]["slug"]
-            chapters = await asyncio.to_thread(finder.fetch_chapters, slug)
+            chapters = await asyncio.to_thread(self.source.fetch_chapters, self._results[idx]["slug"])
             if chapters:
-                self.app.push_screen(ChapterListScreen(chapters, slug))
+                self.app.push_screen(ChapterListScreen(chapters, slug, source=self.source))
             else:
                 self.notify("No chapters found.", timeout=3)
         finally:
@@ -354,15 +353,29 @@ class PasteLinkScreen(Screen):
         self.query_one(LoadingIndicator).set_class(True, "-visible")
         try:
             link = event.value.strip()
-            if "/b/" in link:
-                slug = link.split("/b/")[-1].split("/")[0].split("?")[0]
+            source = None
+            for s in REGISTRY.values():
+                slug = s.parse_slug(link)
+                if slug:
+                    source = s
+                    break
+            if source:
+                slug = source.parse_slug(link)
+                chapters = await asyncio.to_thread(source.fetch_chapters, slug)
+                if chapters:
+                    self.app.push_screen(ChapterListScreen(chapters, source.qualify_slug(slug), source=source))
+                else:
+                    self.notify("No chapters found.", timeout=3)
             else:
-                slug=link
-            chapters = await asyncio.to_thread(finder.fetch_chapters, slug)
-            if chapters:
-                self.app.push_screen(ChapterListScreen(chapters, slug))
-            else:
-                self.notify("No chapters found.", timeout=3)
+                if "/b/" in link:
+                    slug = link.split("/b/")[-1].split("/")[0].split("?")[0]
+                else:
+                    slug = link
+                chapters = await asyncio.to_thread(finder.fetch_chapters, slug)
+                if chapters:
+                    self.app.push_screen(ChapterListScreen(chapters, slug))
+                else:
+                    self.notify("No chapters found.", timeout=3)
         finally:
             self.query_one(LoadingIndicator).set_class(False, "-visible")
             self.query_one(Input).disabled = False
@@ -374,9 +387,10 @@ class PasteLinkScreen(Screen):
 class NovelListScreen(Screen):
     BINDINGS = [Binding("escape", "pop", "Back")]
 
-    def __init__(self, novels: list):
+    def __init__(self, novels: list, source=None):
         super().__init__()
         self.novels = novels
+        self.source = source
 
     def compose(self):
         yield Header(show_clock=False)
@@ -401,9 +415,16 @@ class NovelListScreen(Screen):
         self.query_one(LoadingIndicator).set_class(True, "-visible")
         try:
             novel = self.novels[event.list_view.index]
-            chapters = await asyncio.to_thread(finder.fetch_chapters, novel["slug"])
+            slug = novel["slug"]
+            source = self.source or _get_source(slug)
+            if source:
+                chapters = await asyncio.to_thread(source.fetch_chapters, slug)
+                qual = source.qualify_slug(slug)
+            else:
+                chapters = await asyncio.to_thread(finder.fetch_chapters, slug)
+                qual = slug
             if chapters:
-                self.app.push_screen(ChapterListScreen(chapters, novel["slug"]))
+                self.app.push_screen(ChapterListScreen(chapters, qual, source=source))
             else:
                 self.notify("No chapters found.", timeout=3)
         finally:
@@ -418,10 +439,11 @@ class NovelListScreen(Screen):
 
 class ChapterListScreen(Screen):
 
-    def __init__(self, chapters: list, slug: str):
+    def __init__(self, chapters: list, slug: str, source=None):
         super().__init__()
         self.chapters = chapters
         self.slug = slug
+        self.source = source
     BINDINGS = [
         Binding("escape", "pop", "Back"),
         Binding("c", "continue_reading", "Continue"),
@@ -437,19 +459,19 @@ class ChapterListScreen(Screen):
         yield Footer()
     def on_list_view_selected(self, event: ListView.Selected):
         idx = event.list_view.index
-        self.app.push_screen(ReaderScreen(self.chapters, self.slug, start=idx))
+        self.app.push_screen(ReaderScreen(self.chapters, self.slug, source=self.source, start=idx))
     def on_mount(self):
         self.query_one(ListView).focus()
 
     def action_continue_reading(self):
         idx = _get_last_read(self.slug)
         if idx is not None and 0 <= idx < len(self.chapters):
-            self.app.push_screen(ReaderScreen(self.chapters, self.slug, start=idx))
+            self.app.push_screen(ReaderScreen(self.chapters, self.slug, source=self.source, start=idx))
         else:
             self.notify("No saved progress.", timeout=2)
 
     def action_download_all(self):
-        self.app.push_screen(DownloadProgressScreen(self.chapters, self.slug))
+        self.app.push_screen(DownloadProgressScreen(self.chapters, self.slug, source=self.source))
 
     def action_pop(self):
         self.app.pop_screen()

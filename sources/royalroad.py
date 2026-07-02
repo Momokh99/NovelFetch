@@ -14,7 +14,7 @@ class RoyalRoadSource(Source):
 
     @property
     def name(self) -> str:
-        return "RoyalRoad"
+        return "royalroad"
 
     @property
     def label(self) -> str:
@@ -61,12 +61,14 @@ class RoyalRoadSource(Source):
                 continue
             href = title_tag.get("href", "")
             slug = self.parse_slug("https://www.royalroad.com" + href)
+            img_tag = row.select_one('img[data-type="cover"]')
+            cover = img_tag["src"] if img_tag else ""
             results.append({
                 "title": title_tag.text.strip(),
                 "author": "Unknown",
                 "slug": slug or "",
                 "latest": "",
-                "cover": "",
+                "cover": cover,
             })
         return results
 
@@ -126,4 +128,7 @@ class RoyalRoadSource(Source):
 
 
     def cover_url(self, slug: str) -> str:
-        return ""
+        url = f"https://www.royalroad.com/fiction/{slug}"
+        soup = self.fetch_url(url)
+        img = soup.find("img", class_="thumbnail")
+        return img["src"] if img else ""
