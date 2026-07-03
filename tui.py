@@ -6,9 +6,10 @@ from textual.binding import Binding
 import asyncio
 import json
 import os
-import urllib.parse
 from sources import REGISTRY
 from deep_translator import GoogleTranslator
+import finder
+
 
 GENRES = {
     "action": "Action", "adventure": "Adventure", "comedy": "Comedy",
@@ -986,10 +987,13 @@ class NovelFetchApp(App):
         color: $text-muted;
     }
     """
-
+    def __init__(self):
+        super().__init__()
+        self.current_source = None
 
     def on_mount(self):
         self.push_screen(MainMenu())
+
 
 if __name__=="__main__":
     NovelFetchApp().run()
