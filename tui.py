@@ -8,7 +8,6 @@ import json
 import os
 from sources import REGISTRY
 from deep_translator import GoogleTranslator
-import finder
 
 
 GENRES = {
@@ -23,6 +22,9 @@ PROGRESS_FILE = "novels/progress.json"
 def _slug_to_title(slug):
     raw = slug.split(":", 1)[-1] if ":" in slug else slug
     return raw.replace("-", " ").title()
+
+def _bare_slug(slug):
+    return slug.split(":", 1)[-1] if ":" in slug else slug
 
 def _get_source(slug):
     source_name = slug.split(":", 1)[0] if ":" in slug else None
@@ -178,7 +180,7 @@ class MainMenu(Screen):
                 self.app.current_source = sources[event.index]
             return
         idx = event.index
-        if idx in (2, 3, 4, 5, 6):
+        if idx in (2, 3, 4, 5):
             self.query_one("#action-selector", RadioSet).disabled = True
             self.query_one(LoadingIndicator).set_class(True, "-visible")
             try:
@@ -195,6 +197,8 @@ class MainMenu(Screen):
             finally:
                 self.query_one(LoadingIndicator).set_class(False, "-visible")
                 self.query_one("#action-selector", RadioSet).disabled = False
+        elif idx == 6:
+            self.app.push_screen(GenreScreen(source=self.app.current_source))
         elif idx == 0:
             self.app.push_screen(SearchScreen(source=self.app.current_source))
         elif idx == 1:
@@ -270,8 +274,6 @@ class SearchScreen(Screen):
         self.query_one(LoadingIndicator).set_class(True, "-visible")
         try:
             novels, total_pages = await asyncio.to_thread(self.source.search, self._query, self._page)
-            for n in novels:
-                n["slug"] = self.source.qualify_slug(n["slug"])
             self._results = novels
             self._total_pages = total_pages
             self._show_results(novels)
@@ -308,9 +310,9 @@ class SearchScreen(Screen):
         self.query_one(LoadingIndicator).set_class(True, "-visible")
         try:
             slug = self._results[idx]["slug"]
-            chapters = await asyncio.to_thread(self.source.fetch_chapters, self._results[idx]["slug"])
+            chapters = await asyncio.to_thread(self.source.fetch_chapters, slug)
             if chapters:
-                self.app.push_screen(ChapterListScreen(chapters, slug, source=self.source))
+                self.app.push_screen(ChapterListScreen(chapters, self.source.qualify_slug(slug), source=self.source))
             else:
                 self.notify("No chapters found.", timeout=3)
         finally:
@@ -368,15 +370,7 @@ class PasteLinkScreen(Screen):
                 else:
                     self.notify("No chapters found.", timeout=3)
             else:
-                if "/b/" in link:
-                    slug = link.split("/b/")[-1].split("/")[0].split("?")[0]
-                else:
-                    slug = link
-                chapters = await asyncio.to_thread(finder.fetch_chapters, slug)
-                if chapters:
-                    self.app.push_screen(ChapterListScreen(chapters, slug))
-                else:
-                    self.notify("No chapters found.", timeout=3)
+                self.notify("Could not find a source for that link.", timeout=3)
         finally:
             self.query_one(LoadingIndicator).set_class(False, "-visible")
             self.query_one(Input).disabled = False
@@ -418,14 +412,12 @@ class NovelListScreen(Screen):
             novel = self.novels[event.list_view.index]
             slug = novel["slug"]
             source = self.source or _get_source(slug)
-            if source:
-                chapters = await asyncio.to_thread(source.fetch_chapters, slug)
-                qual = source.qualify_slug(slug)
-            else:
-                chapters = await asyncio.to_thread(finder.fetch_chapters, slug)
-                qual = slug
+            if not source:
+                self.notify("No source found for this novel.", timeout=3)
+                return
+            chapters = await asyncio.to_thread(source.fetch_chapters, _bare_slug(slug))
             if chapters:
-                self.app.push_screen(ChapterListScreen(chapters, qual, source=source))
+                self.app.push_screen(ChapterListScreen(chapters, source.qualify_slug(_bare_slug(slug)), source=source))
             else:
                 self.notify("No chapters found.", timeout=3)
         finally:
@@ -480,6 +472,10 @@ class ChapterListScreen(Screen):
 class GenreScreen(Screen):
     BINDINGS = [Binding("escape", "pop", "Back")]
 
+    def __init__(self, source):
+        super().__init__()
+        self.source = source
+
     def compose(self):
         yield Header(show_clock=False)
         yield Static("Genres", classes="title")
@@ -493,10 +489,9 @@ class GenreScreen(Screen):
         self.query_one(LoadingIndicator).set_class(True, "-visible")
         try:
             slug = list(GENRES.keys())[event.list_view.index]
-            soup = await asyncio.to_thread(finder.fetch_url, f"https://novelbin.com/genre/{slug}")
-            novels = finder.extract_novel_rows(soup)
+            novels = await asyncio.to_thread(self.source.browse_genre, slug)
             if novels:
-                self.app.push_screen(NovelListScreen(novels))
+                self.app.push_screen(NovelListScreen(novels, source=self.source))
             else:
                 self.notify("No results.", timeout=3)
         finally:
@@ -627,9 +622,13 @@ class LocalChapterScreen(Screen):
             self.notify("No saved progress.", timeout=2)
 
     def action_download_all(self):
-        chapters = finder.fetch_chapters(self.slug)
+        source = _get_source(self.slug)
+        if not source:
+            self.notify("No source found for this novel.", timeout=3)
+            return
+        chapters = source.fetch_chapters(_bare_slug(self.slug))
         if chapters:
-            self.app.push_screen(DownloadProgressScreen(chapters, self.slug))
+            self.app.push_screen(DownloadProgressScreen(chapters, self.slug, source=source))
         else:
             self.notify("Could not fetch chapters.", timeout=3)
 
@@ -727,10 +726,11 @@ class LocalReaderScreen(Screen):
 class DownloadProgressScreen(Screen):
     BINDINGS = [Binding("escape", "pop", "Close")]
 
-    def __init__(self, chapters: list, slug: str):
+    def __init__(self, chapters: list, slug: str, source=None):
         super().__init__()
         self.chapters = chapters
         self.slug = slug
+        self.source = source or _get_source(slug)
         self._done = False
 
     def compose(self):
@@ -752,7 +752,7 @@ class DownloadProgressScreen(Screen):
         saved = 0
         for i, ch in enumerate(self.chapters, 1):
             status.update(f"({i}/{total}) {ch['title']}")
-            ok = await asyncio.to_thread(finder.save_chapter, ch["url"], ch["title"], self.slug)
+            ok = await asyncio.to_thread(self.source.save_chapter, ch["url"], ch["title"], self.slug)
             if ok:
                 saved += 1
             bar.progress = saved
@@ -819,10 +819,11 @@ class ReaderScreen(Screen):
         ("q", "quit_reader", "Quit"),
         ("h", "home", "Home"),
     ]
-    def __init__(self, chapters , slug , start=0):
+    def __init__(self, chapters, slug, start=0, source=None):
         super().__init__()
         self.chapters = chapters
         self.slug = slug
+        self.source = source or _get_source(slug)
         self.current = start
         self._original_text = ""
         self._translated_text = ""
@@ -839,7 +840,7 @@ class ReaderScreen(Screen):
 
     def load_chapter(self):
         ch = self.chapters[self.current]
-        lines = finder.read_chapter(ch["url"])
+        lines = self.source.read_chapter(ch["url"])
         if lines is None:
             text = "Could not find chapter content."
         else:
@@ -867,7 +868,7 @@ class ReaderScreen(Screen):
         self.app.switch_screen(MainMenu())
     def action_download(self):
         ch = self.chapters[self.current]
-        ok = finder.save_chapter(ch["url"], ch["title"], self.slug)
+        ok = self.source.save_chapter(ch["url"], ch["title"], self.slug)
         self.notify("Downloaded!" if ok else "Already saved.", timeout=2)
     def action_jump_chapter(self):
         self.app.push_screen(JumpDialog(self.chapters, self._jump_to))

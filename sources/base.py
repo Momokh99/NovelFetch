@@ -53,3 +53,7 @@ class Source(ABC):
     @abstractmethod
     def cover_url(self, slug: str) -> str:
         ...
+
+    @abstractmethod
+    def browse_genre(self, genre_slug: str) -> list[dict]:
+        ...

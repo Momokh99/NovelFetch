@@ -132,3 +132,8 @@ class RoyalRoadSource(Source):
         soup = self.fetch_url(url)
         img = soup.find("img", class_="thumbnail")
         return img["src"] if img else ""
+
+    def browse_genre(self, genre_slug: str) -> list[dict]:
+        url = f"https://www.royalroad.com/fictions/genre/{genre_slug}"
+        soup = self.fetch_url(url)
+        return self.extract_novel_rows(soup)
