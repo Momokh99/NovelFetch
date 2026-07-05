@@ -9,22 +9,21 @@ import os
 from sources import REGISTRY
 from deep_translator import GoogleTranslator
 
+from sources.base import Source
+
 
 GENRES = {
     "action": "Action", "adventure": "Adventure", "comedy": "Comedy",
     "drama": "Drama", "fantasy": "Fantasy", "horror": "Horror",
     "mystery": "Mystery", "romance": "Romance", "sci-fi": "Sci-Fi",
     "thriller": "Thriller",
-}
+    }
 
 PROGRESS_FILE = "novels/progress.json"
 
 def _slug_to_title(slug):
     raw = slug.split(":", 1)[-1] if ":" in slug else slug
     return raw.replace("-", " ").title()
-
-def _bare_slug(slug):
-    return slug.split(":", 1)[-1] if ":" in slug else slug
 
 def _get_source(slug):
     source_name = slug.split(":", 1)[0] if ":" in slug else None
@@ -161,7 +160,6 @@ class MainMenu(Screen):
             yield Static("Action:", classes="title")
             yield RadioSet(
                 RadioButton("Search by name"),
-                RadioButton("Paste novel link"),
                 RadioButton("Hot novels"),
                 RadioButton("Latest releases"),
                 RadioButton("Most popular"),
@@ -180,30 +178,29 @@ class MainMenu(Screen):
                 self.app.current_source = sources[event.index]
             return
         idx = event.index
-        if idx in (2, 3, 4, 5):
+        if idx in (1, 2, 3, 4):
             self.query_one("#action-selector", RadioSet).disabled = True
             self.query_one(LoadingIndicator).set_class(True, "-visible")
             try:
                 source = self.app.current_source
-                key = ["hot", "latest", "popular", "completed"][idx - 2]
+                browse_keys = list(source.browse_urls.keys())
+                key = browse_keys[idx - 1]
                 if key in source.browse_urls:
-                    soup = await asyncio.to_thread(source.fetch_url, source.browse_urls[key])
+                    soup = await source.fetch_url(source.browse_urls[key])
                     novels = source.extract_novel_rows(soup)
                 else:
                     first_key = list(source.browse_urls.keys())[0]
-                    soup = await asyncio.to_thread(source.fetch_url, source.browse_urls[first_key])
+                    soup = await source.fetch_url(source.browse_urls[first_key])
                     novels = source.extract_novel_rows(soup)
                 self.app.push_screen(NovelListScreen(novels, source=source))
             finally:
                 self.query_one(LoadingIndicator).set_class(False, "-visible")
                 self.query_one("#action-selector", RadioSet).disabled = False
-        elif idx == 6:
+        elif idx == 5:
             self.app.push_screen(GenreScreen(source=self.app.current_source))
         elif idx == 0:
             self.app.push_screen(SearchScreen(source=self.app.current_source))
-        elif idx == 1:
-            self.app.push_screen(PasteLinkScreen())
-        elif idx == 7:
+        elif idx == 6:
             self.app.push_screen(MyLibraryScreen())
 
     def action_quit(self):
@@ -214,6 +211,8 @@ class MainMenu(Screen):
 
     def action_prev_option(self):
         self.query_one("#action-selector", RadioSet).action_previous_button()
+    def on_mount(self):
+        self.app.current_source = list(REGISTRY.values())[0]
 
 
 class SearchScreen(Screen):
@@ -273,7 +272,7 @@ class SearchScreen(Screen):
         inp.disabled = True
         self.query_one(LoadingIndicator).set_class(True, "-visible")
         try:
-            novels, total_pages = await asyncio.to_thread(self.source.search, self._query, self._page)
+            novels, total_pages = await self.source.search(self._query, self._page)
             self._results = novels
             self._total_pages = total_pages
             self._show_results(novels)
@@ -310,7 +309,7 @@ class SearchScreen(Screen):
         self.query_one(LoadingIndicator).set_class(True, "-visible")
         try:
             slug = self._results[idx]["slug"]
-            chapters = await asyncio.to_thread(self.source.fetch_chapters, slug)
+            chapters = await self.source.fetch_chapters(slug)
             if chapters:
                 self.app.push_screen(ChapterListScreen(chapters, self.source.qualify_slug(slug), source=self.source))
             else:
@@ -342,40 +341,6 @@ class SearchScreen(Screen):
     def action_pop(self):
         self.app.pop_screen()
 
-
-class PasteLinkScreen(Screen):
-    BINDINGS = [Binding("escape", "pop", "Back")]
-
-    def compose(self):
-        yield Header(show_clock=False)
-        yield Input(placeholder="Paste novel link or slug...")
-        yield LoadingIndicator(classes="loading")
-        yield Footer()
-    async def on_input_submitted(self, event):
-        self.query_one(Input).disabled = True
-        self.query_one(LoadingIndicator).set_class(True, "-visible")
-        try:
-            link = event.value.strip()
-            source = None
-            for s in REGISTRY.values():
-                slug = s.parse_slug(link)
-                if slug:
-                    source = s
-                    break
-            if source:
-                slug = source.parse_slug(link)
-                chapters = await asyncio.to_thread(source.fetch_chapters, slug)
-                if chapters:
-                    self.app.push_screen(ChapterListScreen(chapters, source.qualify_slug(slug), source=source))
-                else:
-                    self.notify("No chapters found.", timeout=3)
-            else:
-                self.notify("Could not find a source for that link.", timeout=3)
-        finally:
-            self.query_one(LoadingIndicator).set_class(False, "-visible")
-            self.query_one(Input).disabled = False
-    def action_pop(self):
-        self.app.pop_screen()
 
 
 
@@ -415,9 +380,10 @@ class NovelListScreen(Screen):
             if not source:
                 self.notify("No source found for this novel.", timeout=3)
                 return
-            chapters = await asyncio.to_thread(source.fetch_chapters, _bare_slug(slug))
+            bare = slug.split(":", 1)[-1] if ":" in slug else slug
+            chapters = await source.fetch_chapters(bare)
             if chapters:
-                self.app.push_screen(ChapterListScreen(chapters, source.qualify_slug(_bare_slug(slug)), source=source))
+                self.app.push_screen(ChapterListScreen(chapters, source.qualify_slug(bare), source=source))
             else:
                 self.notify("No chapters found.", timeout=3)
         finally:
@@ -471,11 +437,9 @@ class ChapterListScreen(Screen):
 
 class GenreScreen(Screen):
     BINDINGS = [Binding("escape", "pop", "Back")]
-
     def __init__(self, source):
         super().__init__()
         self.source = source
-
     def compose(self):
         yield Header(show_clock=False)
         yield Static("Genres", classes="title")
@@ -489,7 +453,7 @@ class GenreScreen(Screen):
         self.query_one(LoadingIndicator).set_class(True, "-visible")
         try:
             slug = list(GENRES.keys())[event.list_view.index]
-            novels = await asyncio.to_thread(self.source.browse_genre, slug)
+            novels = await self.source.browse_genre(slug)
             if novels:
                 self.app.push_screen(NovelListScreen(novels, source=self.source))
             else:
@@ -621,12 +585,14 @@ class LocalChapterScreen(Screen):
         else:
             self.notify("No saved progress.", timeout=2)
 
-    def action_download_all(self):
+    async def action_download_all(self):
         source = _get_source(self.slug)
         if not source:
             self.notify("No source found for this novel.", timeout=3)
             return
-        chapters = source.fetch_chapters(_bare_slug(self.slug))
+        chapters = await source.fetch_chapters(
+            self.slug.split(":", 1)[-1] if ":" in self.slug else self.slug
+        )
         if chapters:
             self.app.push_screen(DownloadProgressScreen(chapters, self.slug, source=source))
         else:
@@ -730,9 +696,9 @@ class DownloadProgressScreen(Screen):
         super().__init__()
         self.chapters = chapters
         self.slug = slug
-        self.source = source or _get_source(slug)
         self._done = False
-
+        self.source = source or _get_source(slug)
+ 
     def compose(self):
         yield Header(show_clock=False)
         yield Static("Downloading...", classes="title")
@@ -750,19 +716,29 @@ class DownloadProgressScreen(Screen):
         status = self.query_one("#dl-status")
         total = len(self.chapters)
         saved = 0
-        for i, ch in enumerate(self.chapters, 1):
-            status.update(f"({i}/{total}) {ch['title']}")
-            ok = await asyncio.to_thread(self.source.save_chapter, ch["url"], ch["title"], self.slug)
+        src = self.source
+        assert src is not None
+
+        sem = asyncio.Semaphore(5)
+
+        async def dl_chapter(ch):
+            async with sem:
+                return await src.save_chapter(ch["url"], ch["title"], self.slug)
+
+        tasks = [dl_chapter(ch) for ch in self.chapters]
+        for i, coro in enumerate(asyncio.as_completed(tasks), 1):
+            ok = await coro
             if ok:
                 saved += 1
             bar.progress = saved
+            status.update(f"({i}/{total}) — {saved} saved")
+
         status.update(f"Done — {saved}/{total} saved.")
         self._done = True
         self.notify(f"Downloaded {saved}/{total} chapters.", timeout=3)
 
     def action_pop(self):
         self.app.pop_screen()
-
 
 class LanguagePicker(Screen):
     BINDINGS = [Binding("escape", "dismiss_pop", "Back")]
@@ -834,13 +810,14 @@ class ReaderScreen(Screen):
         with ScrollableContainer():
             yield Static(id="chapter-text")
         yield Footer()
-    def on_mount(self):
-        self.load_chapter()
+    async def on_mount(self):
+        await self.load_chapter()
 
 
-    def load_chapter(self):
+    async def load_chapter(self):
+        assert self.source is not None
         ch = self.chapters[self.current]
-        lines = self.source.read_chapter(ch["url"])
+        lines = await self.source.read_chapter(ch["url"])
         if lines is None:
             text = "Could not find chapter content."
         else:
@@ -854,27 +831,28 @@ class ReaderScreen(Screen):
         self.query_one(ScrollableContainer).scroll_home(animate=False)
         _mark_seen(self.slug, self.current)
 
-    def action_next_chapter(self):
+    async def action_next_chapter(self):
         if self.current < len(self.chapters) - 1:
             self.current += 1
-            self.load_chapter()
-    def action_prev_chapter(self):
+            await self.load_chapter()
+    async def action_prev_chapter(self):
         if self.current > 0:
             self.current -= 1
-            self.load_chapter()
+            await self.load_chapter()
     def action_quit_reader(self):
         self.app.pop_screen()
     def action_home(self):
         self.app.switch_screen(MainMenu())
-    def action_download(self):
+    async def action_download(self):
+        assert self.source is not None
         ch = self.chapters[self.current]
-        ok = self.source.save_chapter(ch["url"], ch["title"], self.slug)
+        ok = await self.source.save_chapter(ch["url"], ch["title"], self.slug)
         self.notify("Downloaded!" if ok else "Already saved.", timeout=2)
     def action_jump_chapter(self):
         self.app.push_screen(JumpDialog(self.chapters, self._jump_to))
-    def _jump_to(self, idx):
+    async def _jump_to(self, idx):
         self.current = idx
-        self.load_chapter()
+        await self.load_chapter()
 
     async def action_translate(self):
         if not self._original_text:

@@ -1,17 +1,21 @@
 from sources.base import Source
 from typing import Optional
-import requests
 from bs4 import BeautifulSoup
 import urllib.parse
 import os
-
+import httpx
 headers = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
     "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
     "Accept-Language": "en-US,en;q=0.5",
 }
 class RoyalRoadSource(Source):
-
+    def __init__(self):
+        self._client = httpx.AsyncClient(
+            headers=headers,
+            follow_redirects=True,
+            timeout=30,
+        )
     @property
     def name(self) -> str:
         return "royalroad"
@@ -23,18 +27,18 @@ class RoyalRoadSource(Source):
     @property
     def browse_urls(self) -> dict[str, str]:
         return {
-            "best_rated": "https://www.royalroad.com/fictions/best-rated",
-            "latest_updates": "https://www.royalroad.com/fictions/latest-updates",
-            "trending": "https://www.royalroad.com/fictions/trending",
+            "hot": "https://www.royalroad.com/fictions/best-rated",
+            "latest": "https://www.royalroad.com/fictions/latest-updates",
+            "popular": "https://www.royalroad.com/fictions/trending",
             "popular_this_week": "https://www.royalroad.com/fictions/popular-this-week",
             "newest": "https://www.royalroad.com/fictions/newest-fictions",
-            "complete": "https://www.royalroad.com/fictions/complete",
+            "completed": "https://www.royalroad.com/fictions/complete",
             "rising_stars": "https://www.royalroad.com/fictions/rising-stars",
             "ongoing": "https://www.royalroad.com/fictions/ongoing",
         }
 
-    def fetch_url(self, url: str, params: Optional[dict] = None):
-        response = requests.get(url, headers=headers, params=params)
+    async def fetch_url(self, url: str, params: Optional[dict] = None):
+        response = await self._client.get(url, params=params)
         return BeautifulSoup(response.text, "html.parser")
 
     def parse_slug(self, url: str) -> Optional[str]:
@@ -72,24 +76,24 @@ class RoyalRoadSource(Source):
             })
         return results
 
-    def search(self, query: str, page: int = 1) -> tuple[list[dict], int]:
+    async def search(self, query: str, page: int = 1) -> tuple[list[dict], int]:
         url = f"https://www.royalroad.com/fictions/search?keyword={query}&page={page}"
-        soup = self.fetch_url(url)
+        soup = await self.fetch_url(url)
         novels = self.extract_novel_rows(soup)
         page_links = soup.select("ul.pagination.justify-content-center a[data-page]")
         numbers = []
         for a in page_links:
             dp = a.get("data-page")
-            if dp and dp.isdigit():
-                numbers.append(int(dp))
+            if dp and str(dp).isdigit():
+                numbers.append(int(str(dp)))
         total_pages = max(numbers) if numbers else 1
 
         return novels, total_pages
 
 
-    def fetch_chapters(self, slug: str) -> list[dict]:
+    async def fetch_chapters(self, slug: str) -> list[dict]:
         url = f"https://www.royalroad.com/fiction/{slug}"
-        soup = self.fetch_url(url)
+        soup = await self.fetch_url(url)
         rows = soup.select("table#chapters tr.chapter-row")
         chapters = []
         for i, row in enumerate(rows, 1):
@@ -100,24 +104,24 @@ class RoyalRoadSource(Source):
             chapters.append({
                 "num": i,
                 "title": a.text.strip(),
-                "url": "https://www.royalroad.com" + href,
+                "url": "https://www.royalroad.com" + str(href),
             })
         return chapters
 
-    def read_chapter(self, url: str) -> Optional[list[str]]:
-        soup = self.fetch_url(url)
+    async def read_chapter(self, url: str) -> Optional[list[str]]:
+        soup = await self.fetch_url(url)
         main_cont = soup.select_one(".chapter-content")
         if not main_cont:
             return None
         return [p.get_text(strip=True) for p in main_cont.find_all("p")]
 
-    def save_chapter(self, url: str, title: str, slug: str) -> bool:
+    async def save_chapter(self, url: str, title: str, slug: str) -> bool:
         safe_title = title.replace("/", "-").replace(" ", "_")
         path = f"novels/{slug}/{safe_title}.txt"
         if os.path.exists(path):
             return False
         os.makedirs(os.path.dirname(path), exist_ok=True)
-        content = self.read_chapter(url)
+        content = await self.read_chapter(url)
         if not content:
             return False
         with open(path, "w", encoding="utf-8") as f:
@@ -127,13 +131,13 @@ class RoyalRoadSource(Source):
 
 
 
-    def cover_url(self, slug: str) -> str:
+    async def cover_url(self, slug: str) -> str:
         url = f"https://www.royalroad.com/fiction/{slug}"
-        soup = self.fetch_url(url)
+        soup = await self.fetch_url(url)
         img = soup.find("img", class_="thumbnail")
-        return img["src"] if img else ""
+        return str(img["src"]) if img else ""
 
-    def browse_genre(self, genre_slug: str) -> list[dict]:
+    async def browse_genre(self, genre_slug: str) -> list[dict]:
         url = f"https://www.royalroad.com/fictions/genre/{genre_slug}"
-        soup = self.fetch_url(url)
+        soup = await self.fetch_url(url)
         return self.extract_novel_rows(soup)
