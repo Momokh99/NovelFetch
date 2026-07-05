@@ -37,6 +37,24 @@ class RoyalRoadSource(Source):
             "ongoing": "https://www.royalroad.com/fictions/ongoing",
         }
 
+    @property
+    def genres(self) -> dict[str, str]:
+        return {
+            "action-adventure": "Action",
+            "adventure": "Adventure",
+            "comedy": "Comedy",
+            "drama": "Drama",
+            "fantasy": "Fantasy",
+            "horror": "Horror",
+            "mystery": "Mystery",
+            "romance": "Romance",
+            "science-fiction": "Sci-Fi",
+            "thriller": "Thriller",
+            "wuxia": "Wuxia",
+            "litrpg": "LitRPG",
+            "gamelit": "GameLit",
+        }
+
     async def fetch_url(self, url: str, params: Optional[dict] = None):
         response = await self._client.get(url, params=params)
         return BeautifulSoup(response.text, "html.parser")
@@ -138,6 +156,6 @@ class RoyalRoadSource(Source):
         return str(img["src"]) if img else ""
 
     async def browse_genre(self, genre_slug: str) -> list[dict]:
-        url = f"https://www.royalroad.com/fictions/genre/{genre_slug}"
+        url = f"https://www.royalroad.com/fictions/search?tagsAdd={genre_slug}&globalFilters=true"
         soup = await self.fetch_url(url)
         return self.extract_novel_rows(soup)

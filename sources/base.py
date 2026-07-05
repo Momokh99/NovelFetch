@@ -36,5 +36,10 @@ class Source(ABC):
     @abstractmethod
     async def cover_url(self, slug: str) -> str: ...
 
+    @property
+    @abstractmethod
+    def genres(self) -> dict[str, str]:
+        ...
+
     @abstractmethod
     async def browse_genre(self, genre_slug: str) -> list[dict]: ...

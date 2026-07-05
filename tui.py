@@ -12,21 +12,6 @@ from deep_translator import GoogleTranslator
 from sources.base import Source
 
 
-GENRES = {
-    "action-adventure": "Action",
-    "adventure": "Adventure",
-    "comedy": "Comedy",
-    "drama": "Drama",
-    "fantasy": "Fantasy",
-    "horror": "Horror",
-    "mystery": "Mystery",
-    "romance": "Romance",
-    "science-fiction": "Sci-Fi",
-    "thriller": "Thriller",
-    "wuxia": "Wuxia",
-    "litrpg": "LitRPG",
-    "gamelit": "GameLit",
-    }
 
 PROGRESS_FILE = "novels/progress.json"
 
@@ -444,7 +429,7 @@ class GenreScreen(Screen):
         yield Header(show_clock=False)
         yield Static("Genres", classes="title")
         with ScrollableContainer():
-            yield ListView(*[ListItem(Label(name)) for name in GENRES.values()])
+            yield ListView(*[ListItem(Label(name)) for name in self.source.genres.values()])
             yield LoadingIndicator(classes="loading")
         yield Footer()
 
@@ -452,7 +437,7 @@ class GenreScreen(Screen):
         self.query_one(ListView).disabled = True
         self.query_one(LoadingIndicator).set_class(True, "-visible")
         try:
-            slug = list(GENRES.keys())[event.list_view.index]
+            slug = list(self.source.genres.keys())[event.list_view.index]
             novels = await self.source.browse_genre(slug)
             if novels:
                 self.app.push_screen(NovelListScreen(novels, source=self.source))
