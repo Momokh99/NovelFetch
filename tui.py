@@ -13,10 +13,19 @@ from sources.base import Source
 
 
 GENRES = {
-    "action": "Action", "adventure": "Adventure", "comedy": "Comedy",
-    "drama": "Drama", "fantasy": "Fantasy", "horror": "Horror",
-    "mystery": "Mystery", "romance": "Romance", "sci-fi": "Sci-Fi",
+    "action-adventure": "Action",
+    "adventure": "Adventure",
+    "comedy": "Comedy",
+    "drama": "Drama",
+    "fantasy": "Fantasy",
+    "horror": "Horror",
+    "mystery": "Mystery",
+    "romance": "Romance",
+    "science-fiction": "Sci-Fi",
     "thriller": "Thriller",
+    "wuxia": "Wuxia",
+    "litrpg": "LitRPG",
+    "gamelit": "GameLit",
     }
 
 PROGRESS_FILE = "novels/progress.json"
@@ -156,7 +165,7 @@ class MainMenu(Screen):
      ╚═╝  ╚═══╝ ╚═════╝   ╚═══╝  ╚══════╝╚══════╝╚═════╝ ╚═╝╚═╝  ╚═══╝""", classes="banner")
         with Vertical():
             yield Static("Source:", classes="title")
-            yield RadioSet(*[RadioButton(s.label) for s in REGISTRY.values()], id="source-selector")
+            yield Static("  ◆  " + list(REGISTRY.values())[0].label, id="source-label")
             yield Static("Action:", classes="title")
             yield RadioSet(
                 RadioButton("Search by name"),
@@ -172,27 +181,18 @@ class MainMenu(Screen):
         yield Footer()
 
     async def on_radio_set_changed(self, event: RadioSet.Changed):
-        if event.radio_set.id == "source-selector":
-            sources = list(REGISTRY.values())
-            if event.index < len(sources):
-                self.app.current_source = sources[event.index]
-            return
         idx = event.index
         if idx in (1, 2, 3, 4):
             self.query_one("#action-selector", RadioSet).disabled = True
             self.query_one(LoadingIndicator).set_class(True, "-visible")
             try:
                 source = self.app.current_source
-                browse_keys = list(source.browse_urls.keys())
-                key = browse_keys[idx - 1]
-                if key in source.browse_urls:
-                    soup = await source.fetch_url(source.browse_urls[key])
-                    novels = source.extract_novel_rows(soup)
-                else:
-                    first_key = list(source.browse_urls.keys())[0]
-                    soup = await source.fetch_url(source.browse_urls[first_key])
-                    novels = source.extract_novel_rows(soup)
+                key = ["hot", "latest", "popular", "completed"][idx - 1]
+                soup = await source.fetch_url(source.browse_urls[key])
+                novels = source.extract_novel_rows(soup)
                 self.app.push_screen(NovelListScreen(novels, source=source))
+            except Exception:
+                self.notify("Failed to fetch novels. Check your connection.", timeout=3)
             finally:
                 self.query_one(LoadingIndicator).set_class(False, "-visible")
                 self.query_one("#action-selector", RadioSet).disabled = False
@@ -458,6 +458,8 @@ class GenreScreen(Screen):
                 self.app.push_screen(NovelListScreen(novels, source=self.source))
             else:
                 self.notify("No results.", timeout=3)
+        except Exception:
+            self.notify("Failed to load genre. Check your connection.", timeout=3)
         finally:
             self.query_one(LoadingIndicator).set_class(False, "-visible")
             self.query_one(ListView).disabled = False
