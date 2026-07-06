@@ -1,19 +1,13 @@
 from textual.app import App, ComposeResult
 from textual.screen import Screen
-from textual.widgets import Header, Footer, Static, Input, RadioSet, RadioButton, ListView, ListItem, Label, LoadingIndicator, ProgressBar, Image
-from textual.containers import ScrollableContainer, Vertical, Horizontal
+from textual.widgets import Header, Footer, Static, Input, RadioSet, RadioButton, ListView, ListItem, Label, LoadingIndicator, ProgressBar
+from textual.containers import ScrollableContainer, Vertical
 from textual.binding import Binding
 import asyncio
 import json
 import os
 from sources import REGISTRY
 from deep_translator import GoogleTranslator
-from io import BytesIO
-from PIL import Image
-import httpx
-
-COVER_DIR = "novels/covers"
-
 PROGRESS_FILE = "novels/progress.json"
 
 def _slug_to_title(slug):
@@ -25,24 +19,6 @@ def _get_source(slug):
     if source_name:
         return REGISTRY.get(source_name)
     return None
-
-async def _get_cover(slug: str, cover_url: str) -> str | None:
-    if not cover_url:
-        return None
-    safe = slug.replace("/", "_")
-    path = f"{COVER_DIR}/{safe}.jpg"
-    if os.path.exists(path):
-        return path
-    os.makedirs(COVER_DIR, exist_ok=True)
-    try:
-        async with httpx.AsyncClient() as c:
-            resp = await c.get(cover_url)
-        img = Image.open(BytesIO(resp.content))
-        img.thumbnail((120, 180))
-        img.save(path, "JPEG")
-        return path
-    except Exception:
-        return None
 
 def _chapter_sort_key(fname):
     import re
@@ -234,6 +210,7 @@ class SearchScreen(Screen):
         self._total_pages = 1
         self._results = []
         self._search_timer = None
+        self._fetch_lock = False
 
     def compose(self):
         yield Header(show_clock=False)
@@ -272,6 +249,9 @@ class SearchScreen(Screen):
         await self._fetch_page()
 
     async def _fetch_page(self):
+        if self._fetch_lock:
+            return
+        self._fetch_lock = True
         inp = self.query_one(Input)
         inp.disabled = True
         self.query_one(LoadingIndicator).set_class(True, "-visible")
@@ -283,6 +263,7 @@ class SearchScreen(Screen):
         except Exception:
             self.notify("Search failed. Check internet.", timeout=3)
         finally:
+            self._fetch_lock = False
             inp.disabled = False
             self.query_one(LoadingIndicator).set_class(False, "-visible")
 
@@ -315,21 +296,23 @@ class SearchScreen(Screen):
             slug = self._results[idx]["slug"]
             chapters = await self.source.fetch_chapters(slug)
             if chapters:
-                self.app.push_screen(ChapterListScreen(chapters, self.source.qualify_slug(slug), source=self.source, cover_url=self._results[idx].get("cover")))
+                self.app.push_screen(ChapterListScreen(chapters, self.source.qualify_slug(slug), source=self.source))
             else:
                 self.notify("No chapters found.", timeout=3)
+        except Exception:
+            self.notify("Failed to fetch chapters. Check your connection.", timeout=3)
         finally:
             self.query_one(LoadingIndicator).set_class(False, "-visible")
             self.query_one(ListView).disabled = False
 
     def action_next_page(self):
-        if self._page < self._total_pages:
+        if self._page < self._total_pages and not self._fetch_lock:
             self._page += 1
             self._clear_list()
             asyncio.create_task(self._fetch_page())
 
     def action_prev_page(self):
-        if self._page > 1:
+        if self._page > 1 and not self._fetch_lock:
             self._page -= 1
             self._clear_list()
             asyncio.create_task(self._fetch_page())
@@ -355,7 +338,6 @@ class NovelListScreen(Screen):
         super().__init__()
         self.novels = novels
         self.source = source
-    BINDINGS = [Binding("escape", "pop", "Back")]
     def compose(self):
         yield Header(show_clock=False)
         items = []
@@ -367,26 +349,12 @@ class NovelListScreen(Screen):
             if sub:
                 text += f"\n{sub}"
             items.append(ListItem(Label(text)))
-        with Horizontal():
-            with ScrollableContainer():
-                yield ListView(*items)
-                yield LoadingIndicator(classes="loading")
-            yield Image(id="cover-preview", classes="cover-side")
+        with ScrollableContainer():
+            yield ListView(*items)
+            yield LoadingIndicator(classes="loading")
         yield Footer()
     async def on_mount(self):
         self.query_one(ListView).focus()
-        await self._show_cover(0)
-    async def _show_cover(self, idx):
-        if idx < len(self.novels):
-            novel = self.novels[idx]
-            path = await _get_cover(novel["slug"], novel.get("cover", ""))
-            if path:
-                self.query_one("#cover-preview").update(path)
-    def on_list_view_highlighted(self, event: ListView.Highlighted):
-        idx = event.list_view.index
-        if idx is not None:
-            self.run_worker(self._show_cover(idx))
-    # on_list_view_selected stays the same but pass cover_url
     async def on_list_view_selected(self, event: ListView.Selected):
         self.query_one(ListView).disabled = True
         self.query_one(LoadingIndicator).set_class(True, "-visible")
@@ -400,26 +368,25 @@ class NovelListScreen(Screen):
             bare = slug.split(":", 1)[-1] if ":" in slug else slug
             chapters = await source.fetch_chapters(bare)
             if chapters:
-                self.app.push_screen(ChapterListScreen(chapters, source.qualify_slug(bare), source=source, cover_url=novel.get("cover")))
+                self.app.push_screen(ChapterListScreen(chapters, source.qualify_slug(bare), source=source))
             else:
                 self.notify("No chapters found.", timeout=3)
+        except Exception:
+            self.notify("Failed to fetch chapters. Check your connection.", timeout=3)
         finally:
             self.query_one(LoadingIndicator).set_class(False, "-visible")
             self.query_one(ListView).disabled = False
-    def on_mount(self):
-        self.query_one(ListView).focus()
 
     def action_pop(self):
         self.app.pop_screen()
 
 class ChapterListScreen(Screen):
 
-    def __init__(self, chapters: list, slug: str, source=None, cover_url=None):
+    def __init__(self, chapters: list, slug: str, source=None):
         super().__init__()
         self.chapters = chapters
         self.slug = slug
         self.source = source
-        self.cover_url = cover_url
     BINDINGS = [
         Binding("escape", "pop", "Back"),
         Binding("c", "continue_reading", "Continue"),
@@ -427,23 +394,17 @@ class ChapterListScreen(Screen):
     ]
     def compose(self):
         yield Header(show_clock=False)
-        if self.cover_url:
-            yield Image(id="ch-cover", classes="cover-top")
         yield Static(f"Chapters: 1-{len(self.chapters)}", classes="title")
         seen = _get_seen(self.slug)
         items = [ListItem(Label(("✓ " if i in seen else "  ") + c["title"])) for i, c in enumerate(self.chapters)]
         with ScrollableContainer():
             yield ListView(*items)
         yield Footer()
-    async def on_mount(self):
-        if self.cover_url:
-            path = await _get_cover(self.slug, self.cover_url)
-            if path:
-                self.query_one("#ch-cover").update(path)
+    def on_mount(self):
         self.query_one(ListView).focus()
     def on_list_view_selected(self, event: ListView.Selected):
         idx = event.list_view.index
-
+        self.app.push_screen(ReaderScreen(self.chapters, self.slug, source=self.source, start=idx))
 
     def action_continue_reading(self):
         idx = _get_last_read(self.slug)
@@ -990,16 +951,6 @@ class NovelFetchApp(App):
         text-style: italic;
         color: $text-muted;
     }
-    .cover-side {
-    width: 30;
-    height: 40;
-    margin: 0 1;
-}
-.cover-top {
-    width: 40;
-    height: 50;
-    margin: 0 2;
-}
     """
     def __init__(self):
         super().__init__()
