@@ -1,7 +1,8 @@
+from textual import binding
 from textual.app import App, ComposeResult
 from textual.screen import Screen
 from textual.widgets import Header, Footer, Static, Input, RadioSet, RadioButton, ListView, ListItem, Label, LoadingIndicator, ProgressBar
-from textual.containers import ScrollableContainer, Vertical
+from textual.containers import ScrollableContainer, Vertical, Horizontal
 from textual.binding import Binding
 import asyncio
 import json
@@ -135,17 +136,9 @@ class MainMenu(Screen):
     ]
 
     def compose(self):
-        yield Header(show_clock=False)
-        yield Static("""\
-     ███╗   ██╗ ██████╗ ██╗   ██╗███████╗██╗     ██████╗ ██╗███╗   ██╗
-     ████╗  ██║██╔═══██╗██║   ██║██╔════╝██║     ██╔══██╗██║████╗  ██║
-     ██╔██╗ ██║██║   ██║██║   ██║█████╗  ██║     ██████╔╝██║██╔██╗ ██║
-     ██║╚██╗██║██║   ██║╚██╗ ██╔╝██╔══╝  ██║     ██╔══██╗██║██║╚██╗██║
-     ██║ ╚████║╚██████╔╝ ╚████╔╝ ███████╗███████╗██████╔╝██║██║ ╚████║
-     ╚═╝  ╚═══╝ ╚═════╝   ╚═══╝  ╚══════╝╚══════╝╚═════╝ ╚═╝╚═╝  ╚═══╝""", classes="banner")
+        yield CustomHeader()
         with Vertical():
-            yield Static("Source:", classes="title")
-            yield Static("  ◆  " + list(REGISTRY.values())[0].label, id="source-label")
+            yield Static(list(REGISTRY.values())[0].ascii_art, classes="banner")
             yield Static("Action:", classes="title")
             yield RadioSet(
                 RadioButton("Search by name"),
@@ -193,6 +186,7 @@ class MainMenu(Screen):
         self.query_one("#action-selector", RadioSet).action_previous_button()
     def on_mount(self):
         self.app.current_source = list(REGISTRY.values())[0]
+        self.query_one("#action-selector", RadioSet).focus()
 
 
 class SearchScreen(Screen):
@@ -213,7 +207,7 @@ class SearchScreen(Screen):
         self._fetch_lock = False
 
     def compose(self):
-        yield Header(show_clock=False)
+        yield CustomHeader()
         yield Input(placeholder="Search novels...")
         yield Static("", id="page-info")
         with ScrollableContainer():
@@ -339,7 +333,7 @@ class NovelListScreen(Screen):
         self.novels = novels
         self.source = source
     def compose(self):
-        yield Header(show_clock=False)
+        yield CustomHeader()
         items = []
         for n in self.novels:
             sub = n.get("author", "")
@@ -390,10 +384,10 @@ class ChapterListScreen(Screen):
     BINDINGS = [
         Binding("escape", "pop", "Back"),
         Binding("c", "continue_reading", "Continue"),
-        Binding("d", "download_all", "Download All"),
+        Binding("d", "download_dialog", "Download"),
     ]
     def compose(self):
-        yield Header(show_clock=False)
+        yield CustomHeader()
         yield Static(f"Chapters: 1-{len(self.chapters)}", classes="title")
         seen = _get_seen(self.slug)
         items = [ListItem(Label(("✓ " if i in seen else "  ") + c["title"])) for i, c in enumerate(self.chapters)]
@@ -413,8 +407,12 @@ class ChapterListScreen(Screen):
         else:
             self.notify("No saved progress.", timeout=2)
 
-    def action_download_all(self):
-        self.app.push_screen(DownloadProgressScreen(self.chapters, self.slug, source=self.source))
+    def action_download_dialog(self):
+        self.app.push_screen(DownloadDialog(
+            self.chapters, self.slug, self.source,
+            current_idx=None,
+            has_translation=False,
+        ))
 
     def action_pop(self):
         self.app.pop_screen()
@@ -425,7 +423,7 @@ class GenreScreen(Screen):
         super().__init__()
         self.source = source
     def compose(self):
-        yield Header(show_clock=False)
+        yield CustomHeader()
         yield Static("Genres", classes="title")
         with ScrollableContainer():
             yield ListView(*[ListItem(Label(name)) for name in self.source.genres.values()])
@@ -461,7 +459,7 @@ class MyLibraryScreen(Screen):
     ]
 
     def compose(self):
-        yield Header(show_clock=False)
+        yield CustomHeader()
         yield Static("My Library", classes="title")
         novels = _scan_library()
         if not novels:
@@ -515,7 +513,7 @@ class LocalChapterScreen(Screen):
     BINDINGS = [
         Binding("escape", "pop", "Back"),
         Binding("c", "continue_reading", "Continue"),
-        Binding("d", "download_all", "Download All"),
+        Binding("d", "download_dialog", "Download"),
         Binding("x", "delete", "Delete"),
     ]
 
@@ -525,7 +523,7 @@ class LocalChapterScreen(Screen):
         self.files = []
 
     def compose(self):
-        yield Header(show_clock=False)
+        yield CustomHeader()
         yield Static(_slug_to_title(self.slug), classes="title")
         with ScrollableContainer():
             yield ListView(id="local-chapters")
@@ -570,8 +568,10 @@ class LocalChapterScreen(Screen):
             self.app.push_screen(LocalReaderScreen(self.files, self.slug, start=idx))
         else:
             self.notify("No saved progress.", timeout=2)
+    def action_download_dialog(self):
+        asyncio.create_task(self._do_download_dialog())
 
-    async def action_download_all(self):
+    async def _do_download_dialog(self):
         source = _get_source(self.slug)
         if not source:
             self.notify("No source found for this novel.", timeout=3)
@@ -579,10 +579,14 @@ class LocalChapterScreen(Screen):
         chapters = await source.fetch_chapters(
             self.slug.split(":", 1)[-1] if ":" in self.slug else self.slug
         )
-        if chapters:
-            self.app.push_screen(DownloadProgressScreen(chapters, self.slug, source=source))
-        else:
+        if not chapters:
             self.notify("Could not fetch chapters.", timeout=3)
+            return
+        self.app.push_screen(DownloadDialog(
+            chapters, self.slug, source,
+            current_idx=None,
+            has_translation=False,
+        ))
 
     def action_pop(self):
         self._pending = None
@@ -596,6 +600,7 @@ class LocalReaderScreen(Screen):
         ("r", "revert", "Revert"),
         ("q", "quit_reader", "Quit"),
         ("h", "home", "Home"),
+         ("d", "download_dialog", "Download"),
     ]
 
     def __init__(self, files: list, slug: str, start=0):
@@ -607,14 +612,14 @@ class LocalReaderScreen(Screen):
         self._translated_text = ""
 
     def compose(self):
-        yield Header(show_clock=False)
+        yield CustomHeader()
         yield Static(id="chapter-header")
         with ScrollableContainer():
             yield Static(id="local-text")
         yield Footer()
-
     def on_mount(self):
         self.load_chapter()
+        self.query_one(ScrollableContainer).focus()
 
     def load_chapter(self):
         fpath = os.path.join("novels", self.slug, self.files[self.current])
@@ -652,7 +657,25 @@ class LocalReaderScreen(Screen):
         if not self._original_text:
             return
         self.app.push_screen(LanguagePicker(), self._on_lang)
+    def action_download_dialog(self):
+        asyncio.create_task(self._do_download_dialog())
 
+    async def _do_download_dialog(self):
+        source = _get_source(self.slug)
+        if not source:
+            self.notify("No source found for this novel.", timeout=3)
+            return
+        chapters = await source.fetch_chapters(
+            self.slug.split(":", 1)[-1] if ":" in self.slug else self.slug
+        )
+        if not chapters:
+            self.notify("Could not fetch chapters.", timeout=3)
+            return
+        self.app.push_screen(DownloadDialog(
+            chapters, self.slug, source,
+            current_idx=self.current,
+            has_translation=bool(self._translated_text),
+        ))
     def _on_lang(self, lang):
         if not lang:
             return
@@ -678,15 +701,17 @@ class LocalReaderScreen(Screen):
 class DownloadProgressScreen(Screen):
     BINDINGS = [Binding("escape", "pop", "Close")]
 
-    def __init__(self, chapters: list, slug: str, source=None):
+    def __init__(self, chapters: list, slug: str, source=None, translate=False, lang="ar"):
         super().__init__()
         self.chapters = chapters
         self.slug = slug
         self._done = False
         self.source = source or _get_source(slug)
+        self.translate = translate
+        self._lang = lang
  
     def compose(self):
-        yield Header(show_clock=False)
+        yield CustomHeader()
         yield Static("Downloading...", classes="title")
         yield Static("", id="dl-novel")
         yield ProgressBar(total=len(self.chapters), id="dl-bar")
@@ -709,7 +734,24 @@ class DownloadProgressScreen(Screen):
 
         async def dl_chapter(ch):
             async with sem:
-                return await src.save_chapter(ch["url"], ch["title"], self.slug)
+                lines = await src.read_chapter(ch["url"])
+                if lines is None:
+                    return False
+                text = "\n\n".join(lines)
+                if self.translate:
+                    translated = await asyncio.to_thread(_translate_text, text, self._lang)
+                    if translated is None:
+                        return False
+                    text = translated
+                safe_title = ch["title"].replace("/", "-").replace(" ", "_")
+                suffix = f"_{self._lang}" if self.translate else ""
+                path = f"novels/{self.slug}/{safe_title}{suffix}.txt"
+                if os.path.exists(path):
+                    return False
+                os.makedirs(os.path.dirname(path), exist_ok=True)
+                with open(path, "w", encoding="utf-8") as f:
+                    f.write(text)
+                return True
 
         tasks = [dl_chapter(ch) for ch in self.chapters]
         for i, coro in enumerate(asyncio.as_completed(tasks), 1):
@@ -726,11 +768,206 @@ class DownloadProgressScreen(Screen):
     def action_pop(self):
         self.app.pop_screen()
 
+class ConfirmScreen(Screen):
+    BINDINGS = [Binding("escape", "no", "No")]
+
+    def __init__(self, message, callback):
+        super().__init__()
+        self.message = message
+        self.callback = callback
+    def compose(self):
+        yield CustomHeader()
+        yield Static(self.message, classes="title")
+        with ScrollableContainer():
+            yield ListView(
+                ListItem(Label("Yes")),
+                ListItem(Label("No")),
+            )
+        yield Footer()
+
+    def on_mount(self):
+        self.query_one(ListView).focus()
+
+    def on_list_view_selected(self, event):
+        if event.list_view.index == 0:
+            self.callback()
+        self.app.pop_screen()
+
+
+
+class DownloadChaptersScreen(Screen):
+    BINDINGS = [Binding("escape", "cancel", "Back")]
+
+    def __init__(self, chapters, slug, source, translate=False, lang="ar"):
+        super().__init__()
+        self.chapters = chapters
+        self.slug = slug
+        self.source = source
+        self.translate = translate
+        self._lang = lang
+
+    def compose(self):
+        yield CustomHeader()
+        label = "Download Chapters (Translated)" if self.translate else "Download Chapters"
+        yield Static(label, classes="title")
+        yield Static("Range: 1-50  |  List: 1,3,5  |  Blank: all", classes="title")
+        yield Input(placeholder="Type a range, list, or press Enter for all")
+        yield Footer()
+
+    def on_mount(self):
+        self.query_one(Input).focus()
+
+    def on_input_submitted(self, event):
+        selected = self._parse(event.value)
+        filtered = [ch for ch in self.chapters if ch["num"] in selected] if selected else self.chapters
+        self.app.pop_screen()
+        if filtered:
+            self.app.push_screen(DownloadProgressScreen(filtered, self.slug, self.source, translate=self.translate, lang=self._lang))
+        else:
+            self.notify("No matching chapters.", timeout=2)
+
+    def _parse(self, text):
+        text = text.strip()
+        if not text:
+            return None
+        nums = set()
+        for part in text.split(","):
+            part = part.strip()
+            if "-" in part:
+                a, b = part.split("-", 1)
+                try:
+                    nums.update(range(int(a.strip()), int(b.strip()) + 1))
+                except ValueError:
+                    pass
+            else:
+                try:
+                    nums.add(int(part))
+                except ValueError:
+                    pass
+        return sorted(nums)
+
+    def action_cancel(self):
+        self.app.pop_screen()
+
+class DownloadDialog(Screen):
+    BINDINGS = [Binding("escape", "dismiss", "Back")]
+
+    def __init__(self, chapters, slug, source, current_idx=None, has_translation=False):
+        super().__init__()
+        self.chapters = chapters
+        self.slug = slug
+        self.source = source
+        self.current_idx = current_idx
+        self.has_translation = has_translation
+
+    def compose(self):
+        yield CustomHeader()
+        yield Static("Download", classes="title")
+        items = []
+        if self.current_idx is not None:
+            items.append(ListItem(Label("Download Current")))
+            if self.has_translation:
+                items.append(ListItem(Label("Download Current (Translated)")))
+        items.append(ListItem(Label("Download All")))
+        items.append(ListItem(Label("Download All (Translated)")))
+        items.append(ListItem(Label("Download Range...")))
+        items.append(ListItem(Label("Download Range (Translated)...")))
+        with ScrollableContainer():
+            yield ListView(*items, id="dl-options")
+        yield Footer()
+    def on_mount(self):
+        self.query_one("#dl-options", ListView).focus()
+    def on_list_view_selected(self, event):
+        idx = event.list_view.index
+        offset = 0
+        if self.current_idx is not None:
+            if idx == 0:
+                asyncio.create_task(self._save_current())
+                self.app.pop_screen()
+                return
+            offset += 1
+            if self.has_translation:
+                if idx == 1:
+                    asyncio.create_task(self._save_current_translated())
+                    self.app.pop_screen()
+                    return
+                offset += 1
+        action_idx = idx - offset
+        ch, sl, src = self.chapters, self.slug, self.source
+        self.app.pop_screen()
+        if action_idx == 0:
+            self.app.push_screen(DownloadProgressScreen(ch, sl, src))
+        elif action_idx == 1:
+            self.app.push_screen(LanguagePicker(), lambda lang: (
+                lang and self.app.push_screen(ConfirmScreen(
+                    "Translating all chapters is slow. Continue?",
+                    lambda: self.app.push_screen(DownloadProgressScreen(ch, sl, src, translate=True, lang=lang))
+                ))
+            ))
+        elif action_idx == 2:
+            self.app.push_screen(DownloadChaptersScreen(ch, sl, src))
+        elif action_idx == 3:
+            self.app.push_screen(LanguagePicker(), lambda lang: (
+                lang and self.app.push_screen(DownloadChaptersScreen(ch, sl, src, translate=True, lang=lang))
+            ))
+
+    async def _save_current(self):
+        ch = self.chapters[self.current_idx]
+        src = self.source
+        assert src is not None
+        ok = await src.save_chapter(ch["url"], ch["title"], self.slug)
+        self.notify("Downloaded!" if ok else "Already saved.", timeout=2)
+
+    async def _save_current_translated(self):
+        ch = self.chapters[self.current_idx]
+        src = self.source
+        assert src is not None
+        lines = await src.read_chapter(ch["url"])
+        if lines is None:
+            self.notify("Failed to read chapter.", timeout=3)
+            return
+        text = "\n\n".join(lines)
+        self.app.push_screen(LanguagePicker(), self._on_save_translated)
+
+    def _on_save_translated(self, lang):
+        if not lang:
+            return
+        asyncio.create_task(self._do_save_translated(lang))
+
+    async def _do_save_translated(self, lang):
+        ch = self.chapters[self.current_idx]
+        src = self.source
+        assert src is not None
+        lines = await src.read_chapter(ch["url"])
+        if lines is None:
+            self.notify("Failed to read chapter.", timeout=3)
+            return
+        text = "\n\n".join(lines)
+        translated = await asyncio.to_thread(_translate_text, text, lang)
+        if not translated:
+            self.notify("Translation failed.", timeout=3)
+            return
+        safe_title = ch["title"].replace("/", "-").replace(" ", "_")
+        path = f"novels/{self.slug}/{safe_title}_{lang}.txt"
+        os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
+        with open(path, "w", encoding="utf-8") as f:
+            f.write(translated)
+        self.notify(f"Translated ({lang}) saved.", timeout=2)
+
+    def action_dismiss(self):
+        self.app.pop_screen()
+
+
+
+
+
+
+
 class LanguagePicker(Screen):
     BINDINGS = [Binding("escape", "dismiss_pop", "Back")]
 
     def compose(self):
-        yield Header(show_clock=False)
+        yield CustomHeader()
         yield Static("Target Language", classes="title")
         with ScrollableContainer():
             yield ListView(*[ListItem(Label(name)) for name in LANGUAGES])
@@ -775,7 +1012,7 @@ class ReaderScreen(Screen):
         ("n", "next_chapter", "Next"),
         ("p", "prev_chapter", "Prev"),
         ("j", "jump_chapter", "Jump"),
-        ("d", "download", "Download"),
+        ("d", "download_dialog", "Download"),
         ("t", "translate", "Translate"),
         ("r", "revert", "Revert"),
         ("q", "quit_reader", "Quit"),
@@ -791,14 +1028,14 @@ class ReaderScreen(Screen):
         self._translated_text = ""
 
     def compose(self)->ComposeResult:
-        yield Header(show_clock=False)
+        yield CustomHeader()
         yield Static(id="chapter-header")
         with ScrollableContainer():
             yield Static(id="chapter-text")
         yield Footer()
     async def on_mount(self):
         await self.load_chapter()
-
+        self.query_one(ScrollableContainer).focus()
 
     async def load_chapter(self):
         assert self.source is not None
@@ -829,11 +1066,12 @@ class ReaderScreen(Screen):
         self.app.pop_screen()
     def action_home(self):
         self.app.switch_screen(MainMenu())
-    async def action_download(self):
-        assert self.source is not None
-        ch = self.chapters[self.current]
-        ok = await self.source.save_chapter(ch["url"], ch["title"], self.slug)
-        self.notify("Downloaded!" if ok else "Already saved.", timeout=2)
+    def action_download_dialog(self):
+        self.app.push_screen(DownloadDialog(
+            self.chapters, self.slug, self.source,
+            current_idx=self.current,
+            has_translation=bool(self._translated_text),
+        ))
     def action_jump_chapter(self):
         self.app.push_screen(JumpDialog(self.chapters, self._jump_to))
     async def _jump_to(self, idx):
@@ -870,7 +1108,24 @@ class ReaderScreen(Screen):
 
 
 
+class CustomHeader(Horizontal):
+    DEFAULT_CSS = """
+    CustomHeader {
+        background: $panel;
+        color: $text;
+        height: 1;
+    }
+    CustomHeader > #header-title {
+        padding: 0 1;
+    }
+    """
+
+    def compose(self):
+        yield Static(self.app.title, id="header-title")
+
+
 class NovelFetchApp(App):
+    TITLE = "NovelFetch"
     CSS = """
     Screen {
         background: $surface;

@@ -41,5 +41,10 @@ class Source(ABC):
     def genres(self) -> dict[str, str]:
         ...
 
+    @property
+    @abstractmethod
+    def ascii_art(self) -> str:
+        ...
+
     @abstractmethod
     async def browse_genre(self, genre_slug: str) -> list[dict]: ...

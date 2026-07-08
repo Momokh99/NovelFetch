@@ -1,6 +1,6 @@
 # NovelFetch
 
-A TUI novel reader for novelbin.com. Browse, search, download, and read chapters — all in the terminal.
+A TUI novel reader with a pluggable source system. Browse, search, download, and read chapters — all in the terminal.
 
 ```
      ███╗   ██╗ ██████╗ ██╗   ██╗███████╗██╗     ██████╗ ██╗███╗   ██╗
@@ -21,11 +21,10 @@ A TUI novel reader for novelbin.com. Browse, search, download, and read chapters
 
 - **Search** — real-time search with 750ms debounce; paginate with `n`/`p`
 - **Browse** — hot, latest, most popular, completed, and 10 genres
-- **Paste link** — open any novel by URL or slug
 - **My Library** — browse locally downloaded novels, resume reading, delete
 - **Reader** — next/prev (`n`/`p`), jump to chapter (`j`), download current (`d`)
 - **Progress tracking** — auto-saves last chapter; ✓ marks read chapters
-- **Download all** — batch download with progress bar
+- **Download dialog** — All, Range, or Translated; progress bar with translation warning
 - **Translation** — Google Translate (12 languages); Arabic RTL layout
 - **Delete with safety** — double-press `x` to confirm deletion
 
@@ -35,7 +34,7 @@ Key bindings in the reader:
 |-----|--------|
 | `n` / `p` | Next / Prev chapter |
 | `j` | Jump to chapter number |
-| `d` | Download current chapter |
+| `d` | Download dialog (All / Range / Translated) |
 | `t` | Translate to language |
 | `r` | Revert to original text |
 | `h` | Go to main menu |
@@ -50,7 +49,7 @@ git clone https://github.com/Momokh99/NovelFetch.git
 cd NovelFetch
 python -m venv venv
 source venv/bin/activate  # Windows: venv\Scripts\activate
-pip install textual requests beautifulsoup4 deep-translator
+pip install textual httpx beautifulsoup4 deep-translator
 python main.py
 ```
 
@@ -59,8 +58,8 @@ python main.py
 ## How It Works
 
 **Architecture:**
-- `finder.py` — HTTP fetching, HTML parsing, chapter extraction, file saving
-- `tui.py` — Textual TUI app: screens, widgets, navigation, translation, persistence
+- `sources/` — pluggable Source ABC; RoyalRoad implementation with httpx
+- `tui.py` — Textual TUI app: screens, widgets, navigation, translation, persistence, download dialog
 - `main.py` — Entry point (boots the TUI app)
 - `novels/` — Downloaded chapters and JSON state (`progress.json`, `settings.json`)
 
@@ -74,7 +73,8 @@ python main.py
 - [x] Translation (Google Translate, 12 languages, RTL support)
 - [ ] Better text formatting (italics, line breaks, spacing)
 - [ ] Search filters (genre, status, rating)
-- [ ] Multi-source scraping (RoyalRoad, Webnovel, ScribbleHub)
+- [x] Multi-source architecture (RoyalRoad active; ready for more)
+- [x] Download dialog (All, Range, Translated)
 - [ ] Offline reading mode
 - [ ] Reading history across sessions
 
