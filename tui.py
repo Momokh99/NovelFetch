@@ -881,13 +881,13 @@ class DownloadDialog(Screen):
         offset = 0
         if self.current_idx is not None:
             if idx == 0:
-                asyncio.create_task(self._save_current())
+                asyncio.create_task(self._save_current(self.app))
                 self.app.pop_screen()
                 return
             offset += 1
             if self.has_translation:
                 if idx == 1:
-                    asyncio.create_task(self._save_current_translated())
+                    asyncio.create_task(self._save_current_translated(self.app))
                     self.app.pop_screen()
                     return
                 offset += 1
@@ -919,48 +919,46 @@ class DownloadDialog(Screen):
             ))
         ))
 
-    async def _save_current(self):
+    async def _save_current(self, app):
         ch = self.chapters[self.current_idx]
         src = self.source
         assert src is not None
         ok = await src.save_chapter(ch["url"], ch["title"], self.slug)
-        self.notify("Downloaded!" if ok else "Already saved.", timeout=2)
+        app.notify("Downloaded!" if ok else "Already saved.", timeout=2)
 
-    async def _save_current_translated(self):
+    async def _save_current_translated(self, app):
         ch = self.chapters[self.current_idx]
         src = self.source
         assert src is not None
         lines = await src.read_chapter(ch["url"])
         if lines is None:
-            self.notify("Failed to read chapter.", timeout=3)
+            app.notify("Failed to read chapter.", timeout=3)
             return
         text = "\n\n".join(lines)
-        self.app.push_screen(LanguagePicker(), self._on_save_translated)
+        app = self.app
+        app.push_screen(LanguagePicker(), lambda lang: (
+            lang and asyncio.create_task(self._do_save_translated(lang, app))
+        ))
 
-    def _on_save_translated(self, lang):
-        if not lang:
-            return
-        asyncio.create_task(self._do_save_translated(lang))
-
-    async def _do_save_translated(self, lang):
+    async def _do_save_translated(self, lang, app):
         ch = self.chapters[self.current_idx]
         src = self.source
         assert src is not None
         lines = await src.read_chapter(ch["url"])
         if lines is None:
-            self.notify("Failed to read chapter.", timeout=3)
+            app.notify("Failed to read chapter.", timeout=3)
             return
         text = "\n\n".join(lines)
         translated = await asyncio.to_thread(_translate_text, text, lang)
         if not translated:
-            self.notify("Translation failed.", timeout=3)
+            app.notify("Translation failed.", timeout=3)
             return
         safe_title = ch["title"].replace("/", "-").replace(" ", "_")
         path = f"novels/{self.slug}/{safe_title}_{lang}.txt"
         os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
         with open(path, "w", encoding="utf-8") as f:
             f.write(translated)
-        self.notify(f"Translated ({lang}) saved.", timeout=2)
+        app.notify(f"Translated ({lang}) saved.", timeout=2)
 
     def action_dismiss(self):
         self.app.pop_screen()
