@@ -907,10 +907,9 @@ class DownloadDialog(Screen):
         elif action_idx == 2:
             app.push_screen(DownloadChaptersScreen(ch, sl, src))
         elif action_idx == 3:
-            self._download_range_translated(ch, sl, src)
+            self._download_range_translated(ch, sl, src, app)
 
-    def _download_range_translated(self, chapters, slug, source):
-        app = self.app
+    def _download_range_translated(self, chapters, slug, source, app):
         app.push_screen(LanguagePicker(), lambda lang: (
             lang and app.push_screen(ConfirmScreen(
                 "Translating chapters is slow. Continue?",
