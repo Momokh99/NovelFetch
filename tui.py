@@ -980,10 +980,13 @@ class LanguagePicker(Screen):
         yield Footer()
 
     def dismiss(self, result=None):
-        callback = self._result_callbacks[-1] if self._result_callbacks else None
+        user_callback = None
+        if self._result_callbacks:
+            rc = self._result_callbacks[-1]
+            user_callback = rc.callback
         self.app.pop_screen()
-        if callback:
-            callback(result)
+        if user_callback:
+            user_callback(result)
 
     def on_list_view_selected(self, event: ListView.Selected):
         code = list(LANGUAGES.values())[event.list_view.index]
