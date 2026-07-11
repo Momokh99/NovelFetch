@@ -788,9 +788,10 @@ class ConfirmScreen(Screen):
         self.query_one(ListView).focus()
 
     def on_list_view_selected(self, event):
+        app = self.app
+        self.app.pop_screen()
         if event.list_view.index == 0:
             self.callback()
-        self.app.pop_screen()
 
 
 
@@ -906,9 +907,18 @@ class DownloadDialog(Screen):
         elif action_idx == 2:
             app.push_screen(DownloadChaptersScreen(ch, sl, src))
         elif action_idx == 3:
-            app.push_screen(LanguagePicker(), lambda lang: (
-                lang and app.push_screen(DownloadChaptersScreen(ch, sl, src, translate=True, lang=lang))
+            self._download_range_translated(ch, sl, src)
+
+    def _download_range_translated(self, chapters, slug, source):
+        app = self.app
+        app.push_screen(LanguagePicker(), lambda lang: (
+            lang and app.push_screen(ConfirmScreen(
+                "Translating chapters is slow. Continue?",
+                lambda: app.push_screen(DownloadChaptersScreen(
+                    chapters, slug, source, translate=True, lang=lang
+                ))
             ))
+        ))
 
     async def _save_current(self):
         ch = self.chapters[self.current_idx]
