@@ -66,8 +66,10 @@ def _scan_library():
     for slug in sorted(os.listdir(novels_dir)):
         chap_dir = os.path.join(novels_dir, slug)
         if os.path.isdir(chap_dir):
-            files = sorted(os.listdir(chap_dir))
-            result.append({"slug": slug, "title": _slug_to_title(slug), "count": len(files)})
+            count = 0
+            for root, dirs, files in os.walk(chap_dir):
+                count += len(files)
+            result.append({"slug": slug, "title": _slug_to_title(slug), "count": count})
     return result
 
 SETTINGS_FILE = "novels/settings.json"
@@ -532,11 +534,15 @@ class LocalChapterScreen(Screen):
     def on_mount(self):
         chap_dir = os.path.join("novels", self.slug)
         if os.path.isdir(chap_dir):
-            self.files = sorted(os.listdir(chap_dir), key=_chapter_sort_key)
+            self.files = []
+            for root, dirs, files in os.walk(chap_dir):
+                for f in sorted(files, key=_chapter_sort_key):
+                    rel = os.path.relpath(os.path.join(root, f), chap_dir)
+                    self.files.append(rel)
             lv = self.query_one("#local-chapters", ListView)
             seen = _get_seen(self.slug)
             for i, fname in enumerate(self.files):
-                title = fname.replace(".txt", "").replace("_", " ").title()
+                title = os.path.basename(fname).replace(".txt", "").replace("_", " ").title()
                 prefix = "✓ " if i in seen else "  "
                 lv.mount(ListItem(Label(prefix + title)))
             lv.focus()
@@ -623,7 +629,7 @@ class LocalReaderScreen(Screen):
 
     def load_chapter(self):
         fpath = os.path.join("novels", self.slug, self.files[self.current])
-        title = self.files[self.current].replace(".txt", "").replace("_", " ").title()
+        title = os.path.basename(self.files[self.current]).replace(".txt", "").replace("_", " ").title()
         try:
             with open(fpath, encoding="utf-8") as f:
                 content = f.read()
