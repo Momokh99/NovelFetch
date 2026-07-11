@@ -776,14 +776,13 @@ class ConfirmScreen(Screen):
         self.message = message
         self.callback = callback
     def compose(self):
-        yield CustomHeader()
-        yield Static(self.message, classes="title")
-        with ScrollableContainer():
-            yield ListView(
-                ListItem(Label("Yes")),
-                ListItem(Label("No")),
-            )
-        yield Footer()
+        with Vertical(classes="dialog-overlay"):
+            with Vertical(classes="dialog-box"):
+                yield Static(self.message, classes="title")
+                yield ListView(
+                    ListItem(Label("Yes")),
+                    ListItem(Label("No")),
+                )
 
     def on_mount(self):
         self.query_one(ListView).focus()
@@ -807,12 +806,12 @@ class DownloadChaptersScreen(Screen):
         self._lang = lang
 
     def compose(self):
-        yield CustomHeader()
-        label = "Download Chapters (Translated)" if self.translate else "Download Chapters"
-        yield Static(label, classes="title")
-        yield Static("Range: 1-50  |  List: 1,3,5  |  Blank: all", classes="title")
-        yield Input(placeholder="Type a range, list, or press Enter for all")
-        yield Footer()
+        with Vertical(classes="dialog-overlay"):
+            with Vertical(classes="dialog-box"):
+                label = "Download Chapters (Translated)" if self.translate else "Download Chapters"
+                yield Static(label, classes="title")
+                yield Static("Range: 1-50  |  List: 1,3,5  |  Blank: all", classes="title")
+                yield Input(placeholder="Type a range, list, or press Enter for all")
 
     def on_mount(self):
         self.query_one(Input).focus()
@@ -861,20 +860,19 @@ class DownloadDialog(Screen):
         self.has_translation = has_translation
 
     def compose(self):
-        yield CustomHeader()
-        yield Static("Download", classes="title")
-        items = []
-        if self.current_idx is not None:
-            items.append(ListItem(Label("Download Current")))
-            if self.has_translation:
-                items.append(ListItem(Label("Download Current (Translated)")))
-        items.append(ListItem(Label("Download All")))
-        items.append(ListItem(Label("Download All (Translated)")))
-        items.append(ListItem(Label("Download Range...")))
-        items.append(ListItem(Label("Download Range (Translated)...")))
-        with ScrollableContainer():
-            yield ListView(*items, id="dl-options")
-        yield Footer()
+        with Vertical(classes="dialog-overlay"):
+            with Vertical(classes="dialog-box"):
+                yield Static("Download", classes="title")
+                items = []
+                if self.current_idx is not None:
+                    items.append(ListItem(Label("Download Current")))
+                    if self.has_translation:
+                        items.append(ListItem(Label("Download Current (Translated)")))
+                items.append(ListItem(Label("Download All")))
+                items.append(ListItem(Label("Download All (Translated)")))
+                items.append(ListItem(Label("Download Range...")))
+                items.append(ListItem(Label("Download Range (Translated)...")))
+                yield ListView(*items, id="dl-options")
     def on_mount(self):
         self.query_one("#dl-options", ListView).focus()
     def on_list_view_selected(self, event):
@@ -894,21 +892,22 @@ class DownloadDialog(Screen):
                 offset += 1
         action_idx = idx - offset
         ch, sl, src = self.chapters, self.slug, self.source
+        app = self.app
         self.app.pop_screen()
         if action_idx == 0:
-            self.app.push_screen(DownloadProgressScreen(ch, sl, src))
+            app.push_screen(DownloadProgressScreen(ch, sl, src))
         elif action_idx == 1:
-            self.app.push_screen(LanguagePicker(), lambda lang: (
-                lang and self.app.push_screen(ConfirmScreen(
+            app.push_screen(LanguagePicker(), lambda lang: (
+                lang and app.push_screen(ConfirmScreen(
                     "Translating all chapters is slow. Continue?",
-                    lambda: self.app.push_screen(DownloadProgressScreen(ch, sl, src, translate=True, lang=lang))
+                    lambda: app.push_screen(DownloadProgressScreen(ch, sl, src, translate=True, lang=lang))
                 ))
             ))
         elif action_idx == 2:
-            self.app.push_screen(DownloadChaptersScreen(ch, sl, src))
+            app.push_screen(DownloadChaptersScreen(ch, sl, src))
         elif action_idx == 3:
-            self.app.push_screen(LanguagePicker(), lambda lang: (
-                lang and self.app.push_screen(DownloadChaptersScreen(ch, sl, src, translate=True, lang=lang))
+            app.push_screen(LanguagePicker(), lambda lang: (
+                lang and app.push_screen(DownloadChaptersScreen(ch, sl, src, translate=True, lang=lang))
             ))
 
     async def _save_current(self):
@@ -1196,6 +1195,17 @@ class NovelFetchApp(App):
     #dl-novel {
         text-align: center;
         color: $text-muted;
+        padding: 0 1;
+    }
+    .dialog-overlay {
+        align: center middle;
+    }
+    .dialog-box {
+        width: 40%;
+        height: auto;
+        min-height: 6;
+        border: thick $accent;
+        background: $surface;
         padding: 0 1;
     }
     Input {
