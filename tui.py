@@ -9,15 +9,14 @@ import json
 import os
 from sources import REGISTRY
 from deep_translator import GoogleTranslator
+from ebooklib import epub
+import ebooklib
 PROGRESS_FILE = "novels/progress.json"
 
 def _slug_to_title(slug):
     raw = slug.split(":", 1)[-1] if ":" in slug else slug
     return raw.replace("-", " ").title()
 async def _export_epub(slug, source=None, chapters=None):
-    import ebooklib
-    from ebooklib import epub
-
     chap_dir = os.path.join("novels", slug)
     raw_slug = slug.split(":", 1)[-1] if ":" in slug else slug
     title_parts = raw_slug.split("/", 1)
@@ -380,13 +379,13 @@ class SearchScreen(Screen):
         if self._page < self._total_pages and not self._fetch_lock:
             self._page += 1
             self._clear_list()
-            asyncio.create_task(self._fetch_page())
+            self.run_worker(self._fetch_page(), exclusive=True)
 
     def action_prev_page(self):
         if self._page > 1 and not self._fetch_lock:
             self._page -= 1
             self._clear_list()
-            asyncio.create_task(self._fetch_page())
+            self.run_worker(self._fetch_page(), exclusive=True)
 
     def action_clear_or_pop(self):
         inp = self.query_one(Input)
@@ -592,10 +591,14 @@ class MyLibraryScreen(Screen):
             return
         slug = novels[idx]["slug"]
         source = _get_source(slug)
-        asyncio.create_task(self._do_export(slug, source))
+        self.run_worker(self._do_export(slug, source), exclusive=True)
 
     async def _do_export(self, slug, source):
-        path = await _export_epub(slug, source)
+        try:
+            path = await _export_epub(slug, source)
+        except ImportError:
+            self.notify("ebooklib not installed. Run: pip install ebooklib", timeout=5)
+            return
         if path:
             self.notify(f"Exported to {path}", timeout=5)
         else:
@@ -669,16 +672,20 @@ class LocalChapterScreen(Screen):
         else:
             self.notify("No saved progress.", timeout=2)
     def action_download_dialog(self):
-        asyncio.create_task(self._do_download_dialog())
+        self.run_worker(self._do_download_dialog(), exclusive=True)
 
     async def _do_download_dialog(self):
         source = _get_source(self.slug)
         if not source:
             self.notify("No source found for this novel.", timeout=3)
             return
-        chapters = await source.fetch_chapters(
-            self.slug.split(":", 1)[-1] if ":" in self.slug else self.slug
-        )
+        try:
+            chapters = await source.fetch_chapters(
+                self.slug.split(":", 1)[-1] if ":" in self.slug else self.slug
+            )
+        except Exception:
+            self.notify("Failed to fetch chapters. Check network.", timeout=3)
+            return
         if not chapters:
             self.notify("Could not fetch chapters.", timeout=3)
             return
@@ -688,19 +695,18 @@ class LocalChapterScreen(Screen):
             has_translation=False,
         ))
     def action_export(self):
-        lv = self.query_one(ListView)
-        idx = lv.index
-        if idx is None:
+        source = _get_source(self.slug)
+        if not source:
+            self.notify("No source found.", timeout=3)
             return
-        novels = _scan_library()
-        if idx >= len(novels):
-            return
-        slug = novels[idx]["slug"]
-        source = _get_source(slug)
-        asyncio.create_task(self._do_export(slug, source))
+        self.run_worker(self._do_export(self.slug, source), exclusive=True)
 
     async def _do_export(self, slug, source):
-        path = await _export_epub(slug, source)
+        try:
+            path = await _export_epub(slug, source)
+        except ImportError:
+            self.notify("ebooklib not installed. Run: pip install ebooklib", timeout=5)
+            return
         if path:
             self.notify(f"Exported to {path}", timeout=5)
         else:
@@ -775,16 +781,20 @@ class LocalReaderScreen(Screen):
             return
         self.app.push_screen(LanguagePicker(), self._on_lang)
     def action_download_dialog(self):
-        asyncio.create_task(self._do_download_dialog())
+        self.run_worker(self._do_download_dialog(), exclusive=True)
 
     async def _do_download_dialog(self):
         source = _get_source(self.slug)
         if not source:
             self.notify("No source found for this novel.", timeout=3)
             return
-        chapters = await source.fetch_chapters(
-            self.slug.split(":", 1)[-1] if ":" in self.slug else self.slug
-        )
+        try:
+            chapters = await source.fetch_chapters(
+                self.slug.split(":", 1)[-1] if ":" in self.slug else self.slug
+            )
+        except Exception:
+            self.notify("Failed to fetch chapters. Check network.", timeout=3)
+            return
         if not chapters:
             self.notify("Could not fetch chapters.", timeout=3)
             return
@@ -796,7 +806,7 @@ class LocalReaderScreen(Screen):
     def _on_lang(self, lang):
         if not lang:
             return
-        asyncio.create_task(self._do_translate(lang))
+        self.run_worker(self._do_translate(lang), exclusive=True)
 
     async def _do_translate(self, lang):
         translated = await asyncio.to_thread(_translate_text, self._original_text, lang)
@@ -850,6 +860,11 @@ class DownloadProgressScreen(Screen):
         sem = asyncio.Semaphore(5)
 
         async def dl_chapter(ch):
+            safe_title = ch["title"].replace("/", "-").replace(" ", "_")
+            suffix = f"_{self._lang}" if self.translate else ""
+            path = f"novels/{self.slug}/{safe_title}{suffix}.txt"
+            if os.path.exists(path):
+                return False
             async with sem:
                 lines = await src.read_chapter(ch["url"])
                 if lines is None:
@@ -860,11 +875,6 @@ class DownloadProgressScreen(Screen):
                     if translated is None:
                         return False
                     text = translated
-                safe_title = ch["title"].replace("/", "-").replace(" ", "_")
-                suffix = f"_{self._lang}" if self.translate else ""
-                path = f"novels/{self.slug}/{safe_title}{suffix}.txt"
-                if os.path.exists(path):
-                    return False
                 os.makedirs(os.path.dirname(path), exist_ok=True)
                 with open(path, "w", encoding="utf-8") as f:
                     f.write(text)
@@ -939,7 +949,12 @@ class DownloadEPUBScreen(Screen):
             status.update(f"Downloaded ({i}/{total})")
 
         status.update("Packaging EPUB...")
-        out = await _export_epub(self.slug, self.source, chapters=results)
+        try:
+            out = await _export_epub(self.slug, self.source, chapters=results)
+        except ImportError:
+            status.update("ebooklib not installed. Run: pip install ebooklib")
+            self.notify("ebooklib not installed. Run: pip install ebooklib", timeout=5)
+            return
         if out:
             status.update(f"Saved: {out}")
             self.notify(f"EPUB saved: {out}", timeout=5)
@@ -1117,45 +1132,59 @@ class DownloadDialog(Screen):
         ))
 
     async def _save_current(self, app):
-        ch = self.chapters[self.current_idx]
-        src = self.source
-        assert src is not None
-        ok = await src.save_chapter(ch["url"], ch["title"], self.slug)
-        app.notify("Downloaded!" if ok else "Already saved.", timeout=2)
+        try:
+            ch = self.chapters[self.current_idx]
+            src = self.source
+            if src is None:
+                app.notify("No source available.", timeout=3)
+                return
+            ok = await src.save_chapter(ch["url"], ch["title"], self.slug)
+            app.notify("Downloaded!" if ok else "Already saved.", timeout=2)
+        except Exception:
+            app.notify("Failed to download chapter.", timeout=3)
 
     async def _save_current_translated(self, app):
-        ch = self.chapters[self.current_idx]
-        src = self.source
-        assert src is not None
-        lines = await src.read_chapter(ch["url"])
-        if lines is None:
-            app.notify("Failed to read chapter.", timeout=3)
-            return
-        text = "\n\n".join(lines)
-        app = self.app
-        app.push_screen(LanguagePicker(), lambda lang: (
-            lang and asyncio.create_task(self._do_save_translated(lang, app))
-        ))
+        try:
+            ch = self.chapters[self.current_idx]
+            src = self.source
+            if src is None:
+                app.notify("No source available.", timeout=3)
+                return
+            lines = await src.read_chapter(ch["url"])
+            if lines is None:
+                app.notify("Failed to read chapter.", timeout=3)
+                return
+            text = "\n\n".join(lines)
+            app.push_screen(LanguagePicker(), lambda lang: (
+                lang and asyncio.create_task(self._do_save_translated(lang, app))
+            ))
+        except Exception:
+            app.notify("Failed to read chapter for translation.", timeout=3)
 
     async def _do_save_translated(self, lang, app):
-        ch = self.chapters[self.current_idx]
-        src = self.source
-        assert src is not None
-        lines = await src.read_chapter(ch["url"])
-        if lines is None:
-            app.notify("Failed to read chapter.", timeout=3)
-            return
-        text = "\n\n".join(lines)
-        translated = await asyncio.to_thread(_translate_text, text, lang)
-        if not translated:
-            app.notify("Translation failed.", timeout=3)
-            return
-        safe_title = ch["title"].replace("/", "-").replace(" ", "_")
-        path = f"novels/{self.slug}/{safe_title}_{lang}.txt"
-        os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
-        with open(path, "w", encoding="utf-8") as f:
-            f.write(translated)
-        app.notify(f"Translated ({lang}) saved.", timeout=2)
+        try:
+            ch = self.chapters[self.current_idx]
+            src = self.source
+            if src is None:
+                app.notify("No source available.", timeout=3)
+                return
+            lines = await src.read_chapter(ch["url"])
+            if lines is None:
+                app.notify("Failed to read chapter.", timeout=3)
+                return
+            text = "\n\n".join(lines)
+            translated = await asyncio.to_thread(_translate_text, text, lang)
+            if not translated:
+                app.notify("Translation failed.", timeout=3)
+                return
+            safe_title = ch["title"].replace("/", "-").replace(" ", "_")
+            path = f"novels/{self.slug}/{safe_title}_{lang}.txt"
+            os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
+            with open(path, "w", encoding="utf-8") as f:
+                f.write(translated)
+            app.notify(f"Translated ({lang}) saved.", timeout=2)
+        except Exception:
+            app.notify("Failed to save translated chapter.", timeout=3)
 
     def action_dismiss(self):
         self.app.pop_screen()
@@ -1250,9 +1279,17 @@ class ReaderScreen(Screen):
         self.query_one(ScrollableContainer).focus()
 
     async def load_chapter(self):
-        assert self.source is not None
+        if self.source is None:
+            self.notify("No source available.", timeout=3)
+            self.app.pop_screen()
+            return
         ch = self.chapters[self.current]
-        lines = await self.source.read_chapter(ch["url"])
+        try:
+            lines = await self.source.read_chapter(ch["url"])
+        except Exception:
+            self.notify("Failed to load chapter. Check network.", timeout=3)
+            text = "Could not load chapter content."
+            lines = None
         if lines is None:
             text = "Could not find chapter content."
         else:
@@ -1298,7 +1335,7 @@ class ReaderScreen(Screen):
     def _on_lang(self, lang):
         if not lang:
             return
-        asyncio.create_task(self._do_translate(lang))
+        self.run_worker(self._do_translate(lang), exclusive=True)
 
     async def _do_translate(self, lang):
         translated = await asyncio.to_thread(_translate_text, self._original_text, lang)
