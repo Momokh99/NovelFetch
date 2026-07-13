@@ -980,13 +980,14 @@ class ConfirmScreen(Screen):
 class DownloadChaptersScreen(Screen):
     BINDINGS = [Binding("escape", "cancel", "Back")]
 
-    def __init__(self, chapters, slug, source, translate=False, lang="ar"):
+    def __init__(self, chapters, slug, source, translate=False, lang="ar", epub=False):
         super().__init__()
         self.chapters = chapters
         self.slug = slug
         self.source = source
         self.translate = translate
         self._lang = lang
+        self._epub = epub
 
     def compose(self):
         with Vertical(classes="dialog-overlay"):
@@ -1004,7 +1005,8 @@ class DownloadChaptersScreen(Screen):
         filtered = [ch for ch in self.chapters if ch["num"] in selected] if selected else self.chapters
         self.app.pop_screen()
         if filtered:
-            self.app.push_screen(DownloadProgressScreen(filtered, self.slug, self.source, translate=self.translate, lang=self._lang))
+            S = DownloadEPUBScreen if self._epub else DownloadProgressScreen
+            self.app.push_screen(S(filtered, self.slug, self.source, translate=self.translate, lang=self._lang))
         else:
             self.notify("No matching chapters.", timeout=2)
 
@@ -1032,7 +1034,10 @@ class DownloadChaptersScreen(Screen):
         self.app.pop_screen()
 
 class DownloadDialog(Screen):
-    BINDINGS = [Binding("escape", "dismiss", "Back")]
+    BINDINGS = [
+        Binding("escape", "dismiss", "Back"),
+        Binding("e", "toggle_epub", "EPUB"),
+    ]
 
     def __init__(self, chapters, slug, source, current_idx=None, has_translation=False):
         super().__init__()
@@ -1041,11 +1046,12 @@ class DownloadDialog(Screen):
         self.source = source
         self.current_idx = current_idx
         self.has_translation = has_translation
+        self._epub_mode = False
 
     def compose(self):
         with Vertical(classes="dialog-overlay"):
             with Vertical(classes="dialog-box"):
-                yield Static("Download", classes="title")
+                yield Static("Download  |  EPUB: OFF  (e)", id="dl-epub-status", classes="title")
                 items = []
                 if self.current_idx is not None:
                     items.append(ListItem(Label("Download Current")))
@@ -1055,11 +1061,13 @@ class DownloadDialog(Screen):
                 items.append(ListItem(Label("Download All (Translated)")))
                 items.append(ListItem(Label("Download Range...")))
                 items.append(ListItem(Label("Download Range (Translated)...")))
-                items.append(ListItem(Label("Download as EPUB")))
-                items.append(ListItem(Label("Download as EPUB (Translated)")))
                 yield ListView(*items, id="dl-options")
     def on_mount(self):
         self.query_one("#dl-options", ListView).focus()
+    def action_toggle_epub(self):
+        self._epub_mode = not self._epub_mode
+        s = "ON" if self._epub_mode else "OFF"
+        self.query_one("#dl-epub-status", Static).update(f"Download  |  EPUB: {s}  (e)")
     def on_list_view_selected(self, event):
         idx = event.list_view.index
         offset = 0
@@ -1078,33 +1086,32 @@ class DownloadDialog(Screen):
         action_idx = idx - offset
         ch, sl, src = self.chapters, self.slug, self.source
         app = self.app
+        epub = self._epub_mode
         self.app.pop_screen()
         if action_idx == 0:
-            app.push_screen(DownloadProgressScreen(ch, sl, src))
+            S = DownloadEPUBScreen if epub else DownloadProgressScreen
+            app.push_screen(S(ch, sl, src))
         elif action_idx == 1:
             app.push_screen(LanguagePicker(), lambda lang: (
                 lang and app.push_screen(ConfirmScreen(
                     "Translating all chapters is slow. Continue?",
-                    lambda: app.push_screen(DownloadProgressScreen(ch, sl, src, translate=True, lang=lang))
+                    lambda: app.push_screen(
+                        DownloadEPUBScreen(ch, sl, src, translate=True, lang=lang) if epub
+                        else DownloadProgressScreen(ch, sl, src, translate=True, lang=lang)
+                    )
                 ))
             ))
         elif action_idx == 2:
-            app.push_screen(DownloadChaptersScreen(ch, sl, src))
+            app.push_screen(DownloadChaptersScreen(ch, sl, src, epub=epub))
         elif action_idx == 3:
-            self._download_range_translated(ch, sl, src, app)
-        elif action_idx == 4:
-            app.push_screen(DownloadEPUBScreen(ch, sl, src))
-        elif action_idx == 5:
-            app.push_screen(LanguagePicker(), lambda lang: (
-                lang and app.push_screen(DownloadEPUBScreen(ch, sl, src, translate=True, lang=lang))
-            ))
+            self._download_range_translated(ch, sl, src, app, epub=epub)
 
-    def _download_range_translated(self, chapters, slug, source, app):
+    def _download_range_translated(self, chapters, slug, source, app, epub=False):
         app.push_screen(LanguagePicker(), lambda lang: (
             lang and app.push_screen(ConfirmScreen(
                 "Translating chapters is slow. Continue?",
                 lambda: app.push_screen(DownloadChaptersScreen(
-                    chapters, slug, source, translate=True, lang=lang
+                    chapters, slug, source, translate=True, lang=lang, epub=epub
                 ))
             ))
         ))
