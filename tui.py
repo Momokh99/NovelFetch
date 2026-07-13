@@ -14,7 +14,82 @@ PROGRESS_FILE = "novels/progress.json"
 def _slug_to_title(slug):
     raw = slug.split(":", 1)[-1] if ":" in slug else slug
     return raw.replace("-", " ").title()
+async def _export_epub(slug, source=None, chapters=None):
+    import ebooklib
+    from ebooklib import epub
 
+    chap_dir = os.path.join("novels", slug)
+    raw_slug = slug.split(":", 1)[-1] if ":" in slug else slug
+    title_parts = raw_slug.split("/", 1)
+    title_stem = title_parts[-1] if len(title_parts) > 1 else title_parts[0]
+    title = title_stem.replace("-", " ").title()
+
+    book = epub.EpubBook()
+    book.set_identifier(slug.replace("/", "-").replace(":", "-"))
+    book.set_title(title)
+    book.set_language("en")
+
+    # Cover
+    cover_data = None
+    author = "Unknown"
+    if source:
+        try:
+            url = await source.cover_url(raw_slug)
+            if url:
+                import httpx
+                async with httpx.AsyncClient() as c:
+                    r = await c.get(url)
+                    if r.status_code == 200:
+                        cover_data = r.content
+        except Exception:
+            pass
+    book.add_author(author)
+
+    # Chapters: either in-memory list or read from disk
+    if chapters is not None:
+        txt_list = list(chapters)
+    else:
+        if not os.path.isdir(chap_dir):
+            return None
+        txt_files = []
+        for root, dirs, files in os.walk(chap_dir):
+            for f in sorted(files):
+                if f.endswith(".txt"):
+                    rel = os.path.relpath(os.path.join(root, f), chap_dir)
+                    txt_files.append(rel)
+        txt_files.sort(key=_chapter_sort_key)
+        txt_list = []
+        for fname in txt_files:
+            with open(os.path.join(chap_dir, fname), encoding="utf-8") as f:
+                content = f.read()
+            txt_list.append((fname, content))
+
+    if not txt_list:
+        return None
+
+    epub_chapters = []
+    for i, (fname, content) in enumerate(txt_list):
+        ch_title = os.path.basename(fname).replace(".txt", "").replace("_", " ").title()
+        paragraphs = content.split("\n\n")
+        html = f"<h1>{ch_title}</h1>"
+        for p in paragraphs:
+            p = p.strip()
+            if p:
+                html += f"<p>{p}</p>"
+        ch = epub.EpubHtml(title=ch_title, file_name=f"chap_{i+1:04d}.xhtml", lang="en")
+        ch.content = html
+        book.add_item(ch)
+        epub_chapters.append(ch)
+
+    book.toc = epub_chapters
+    book.add_item(epub.EpubNcx())
+    book.add_item(epub.EpubNav())
+
+    safe = title.replace(" ", "_").replace("/", "-")
+    out = os.path.join(chap_dir, f"{safe}.epub")
+    os.makedirs(os.path.dirname(out) or ".", exist_ok=True)
+    await asyncio.to_thread(epub.write_epub, out, book, {})
+    return out
 def _get_source(slug):
     source_name = slug.split(":", 1)[0] if ":" in slug else None
     if source_name:
@@ -458,6 +533,7 @@ class MyLibraryScreen(Screen):
     BINDINGS = [
         Binding("escape", "pop", "Back"),
         Binding("x", "delete", "Delete"),
+        Binding("e", "export", "Export EPUB"),
     ]
 
     def compose(self):
@@ -506,7 +582,24 @@ class MyLibraryScreen(Screen):
         else:
             self._pending = slug
             self.notify(f"Press x again to delete {_slug_to_title(slug)}", timeout=3)
+    def action_export(self):
+        lv = self.query_one(ListView)
+        idx = lv.index
+        if idx is None:
+            return
+        novels = _scan_library()
+        if idx >= len(novels):
+            return
+        slug = novels[idx]["slug"]
+        source = _get_source(slug)
+        asyncio.create_task(self._do_export(slug, source))
 
+    async def _do_export(self, slug, source):
+        path = await _export_epub(slug, source)
+        if path:
+            self.notify(f"Exported to {path}", timeout=5)
+        else:
+            self.notify("No chapters to export.", timeout=3)
     def action_pop(self):
         self._pending = None
         self.app.pop_screen()
@@ -517,6 +610,7 @@ class LocalChapterScreen(Screen):
         Binding("c", "continue_reading", "Continue"),
         Binding("d", "download_dialog", "Download"),
         Binding("x", "delete", "Delete"),
+        Binding("e", "export", "Export EPUB"),
     ]
 
     def __init__(self, slug: str):
@@ -593,7 +687,24 @@ class LocalChapterScreen(Screen):
             current_idx=None,
             has_translation=False,
         ))
+    def action_export(self):
+        lv = self.query_one(ListView)
+        idx = lv.index
+        if idx is None:
+            return
+        novels = _scan_library()
+        if idx >= len(novels):
+            return
+        slug = novels[idx]["slug"]
+        source = _get_source(slug)
+        asyncio.create_task(self._do_export(slug, source))
 
+    async def _do_export(self, slug, source):
+        path = await _export_epub(slug, source)
+        if path:
+            self.notify(f"Exported to {path}", timeout=5)
+        else:
+            self.notify("No chapters to export.", timeout=3)
     def action_pop(self):
         self._pending = None
         self.app.pop_screen()
@@ -773,7 +884,72 @@ class DownloadProgressScreen(Screen):
 
     def action_pop(self):
         self.app.pop_screen()
+class DownloadEPUBScreen(Screen):
+    BINDINGS = [Binding("escape", "pop", "Close")]
 
+    def __init__(self, chapters, slug, source=None, translate=False, lang="ar"):
+        super().__init__()
+        self.chapters = chapters
+        self.slug = slug
+        self._done = False
+        self.source = source or _get_source(slug)
+        self.translate = translate
+        self._lang = lang
+
+    def compose(self):
+        yield CustomHeader()
+        yield Static("Downloading EPUB...", classes="title")
+        yield Static("", id="dl-novel")
+        yield ProgressBar(total=len(self.chapters), id="dl-bar")
+        yield Static("", id="dl-status")
+        yield Footer()
+
+    def on_mount(self):
+        self.query_one("#dl-novel").update(f"Novel: {_slug_to_title(self.slug)}")
+        self.run_worker(self._download_all(), exclusive=True)
+
+    async def _download_all(self):
+        bar = self.query_one("#dl-bar")
+        status = self.query_one("#dl-status")
+        total = len(self.chapters)
+        src = self.source
+        assert src is not None
+        sem = asyncio.Semaphore(5)
+        results = []
+
+        async def dl_chapter(ch):
+            async with sem:
+                lines = await src.read_chapter(ch["url"])
+                if lines is None:
+                    return None
+                text = "\n\n".join(lines)
+                if self.translate:
+                    translated = await asyncio.to_thread(_translate_text, text, self._lang)
+                    if translated is None:
+                        return None
+                    text = translated
+                return (ch["title"], text)
+
+        tasks = [dl_chapter(ch) for ch in self.chapters]
+        for i, coro in enumerate(asyncio.as_completed(tasks), 1):
+            r = await coro
+            if r is not None:
+                results.append(r)
+            bar.progress = i
+            status.update(f"Downloaded ({i}/{total})")
+
+        status.update("Packaging EPUB...")
+        out = await _export_epub(self.slug, self.source, chapters=results)
+        if out:
+            status.update(f"Saved: {out}")
+            self.notify(f"EPUB saved: {out}", timeout=5)
+        else:
+            status.update("Failed to create EPUB")
+            self.notify("EPUB creation failed.", timeout=3)
+        self._done = True
+
+    def action_pop(self):
+        self.app.pop_screen()
 class ConfirmScreen(Screen):
     BINDINGS = [Binding("escape", "no", "No")]
 
@@ -879,6 +1055,8 @@ class DownloadDialog(Screen):
                 items.append(ListItem(Label("Download All (Translated)")))
                 items.append(ListItem(Label("Download Range...")))
                 items.append(ListItem(Label("Download Range (Translated)...")))
+                items.append(ListItem(Label("Download as EPUB")))
+                items.append(ListItem(Label("Download as EPUB (Translated)")))
                 yield ListView(*items, id="dl-options")
     def on_mount(self):
         self.query_one("#dl-options", ListView).focus()
@@ -914,6 +1092,12 @@ class DownloadDialog(Screen):
             app.push_screen(DownloadChaptersScreen(ch, sl, src))
         elif action_idx == 3:
             self._download_range_translated(ch, sl, src, app)
+        elif action_idx == 4:
+            app.push_screen(DownloadEPUBScreen(ch, sl, src))
+        elif action_idx == 5:
+            app.push_screen(LanguagePicker(), lambda lang: (
+                lang and app.push_screen(DownloadEPUBScreen(ch, sl, src, translate=True, lang=lang))
+            ))
 
     def _download_range_translated(self, chapters, slug, source, app):
         app.push_screen(LanguagePicker(), lambda lang: (
