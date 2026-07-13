@@ -7,6 +7,8 @@ from textual.binding import Binding
 import asyncio
 import json
 import os
+import time
+import threading
 from sources import REGISTRY
 from deep_translator import GoogleTranslator
 from ebooklib import epub
@@ -100,37 +102,56 @@ def _chapter_sort_key(fname):
     nums = re.findall(r"\d+", fname)
     return int(nums[0]) if nums else 0
 
-def _load_progress():
-    try:
-        with open(PROGRESS_FILE) as f:
-            data = json.load(f)
-    except (FileNotFoundError, json.JSONDecodeError):
-        return {}
-    for slug, val in list(data.items()):
-        if isinstance(val, int):
-            data[slug] = {"last": val, "seen": [val]}
-    return data
+class ProgressTracker:
+    def __init__(self, path):
+        self.path = path
+        self._lock = threading.Lock()
+        self._data: dict = {}
+        self._dirty = False
+        self._load()
 
-def _mark_seen(slug, idx):
-    data = _load_progress()
-    entry = data.get(slug, {"last": idx, "seen": []})
-    entry["last"] = idx
-    if idx not in entry["seen"]:
-        entry["seen"].append(idx)
-    data[slug] = entry
-    os.makedirs(os.path.dirname(PROGRESS_FILE) or ".", exist_ok=True)
-    with open(PROGRESS_FILE, "w") as f:
-        json.dump(data, f, indent=2)
+    def _load(self):
+        try:
+            with open(self.path) as f:
+                data = json.load(f)
+        except (FileNotFoundError, json.JSONDecodeError):
+            data = {}
+        for slug, val in list(data.items()):
+            if isinstance(val, int):
+                data[slug] = {"last": val, "seen": [val]}
+        self._data = data
 
-def _get_last_read(slug):
-    data = _load_progress()
-    entry = data.get(slug)
-    return entry["last"] if entry else None
+    def mark_seen(self, slug, idx):
+        with self._lock:
+            entry = self._data.get(slug, {"last": idx, "seen": []})
+            entry["last"] = idx
+            if idx not in entry["seen"]:
+                entry["seen"].append(idx)
+            self._data[slug] = entry
+            self._dirty = True
 
-def _get_seen(slug):
-    data = _load_progress()
-    entry = data.get(slug)
-    return set(entry["seen"]) if entry else set()
+    def get_last(self, slug):
+        with self._lock:
+            entry = self._data.get(slug)
+            return entry["last"] if entry else None
+
+    def get_seen(self, slug):
+        with self._lock:
+            entry = self._data.get(slug)
+            return set(entry["seen"]) if entry else set()
+
+    def flush(self):
+        with self._lock:
+            if not self._dirty:
+                return
+            os.makedirs(os.path.dirname(self.path) or ".", exist_ok=True)
+            tmp = self.path + ".tmp"
+            with open(tmp, "w") as f:
+                json.dump(self._data, f, indent=2)
+            os.replace(tmp, self.path)
+            self._dirty = False
+
+progress = ProgressTracker(PROGRESS_FILE)
 
 def _scan_library():
     novels_dir = "novels"
@@ -146,27 +167,25 @@ def _scan_library():
             result.append({"slug": slug, "title": _slug_to_title(slug), "count": count})
     return result
 
-SETTINGS_FILE = "novels/settings.json"
-
-def _load_settings():
-    try:
-        with open(SETTINGS_FILE) as f:
-            return json.load(f)
-    except (FileNotFoundError, json.JSONDecodeError):
-        return {}
-
-def _save_setting(key, val):
-    data = _load_settings()
-    data[key] = val
-    os.makedirs(os.path.dirname(SETTINGS_FILE) or ".", exist_ok=True)
-    with open(SETTINGS_FILE, "w") as f:
-        json.dump(data, f, indent=2)
-
 LANGUAGES = {
     "Arabic": "ar", "Chinese": "zh-cn", "French": "fr", "German": "de",
     "Hindi": "hi", "Italian": "it", "Japanese": "ja", "Korean": "ko",
     "Portuguese": "pt", "Russian": "ru", "Spanish": "es", "Turkish": "tr",
 }
+
+_chapter_cache: dict[str, tuple[float, list[dict]]] = {}
+
+async def _get_chapters(source, slug, ttl=300):
+    now = time.monotonic()
+    cached = _chapter_cache.get(slug)
+    if cached and now - cached[0] < ttl:
+        return cached[1]
+    chapters = await source.fetch_chapters(slug)
+    _chapter_cache[slug] = (now, chapters)
+    return chapters
+
+from concurrent.futures import ThreadPoolExecutor
+_translate_pool = ThreadPoolExecutor(max_workers=5)
 
 def _chunk_text(text, maxlen=4800):
     paragraphs = text.split("\n\n")
@@ -199,7 +218,7 @@ def _translate_text(text, target):
         chunks = _chunk_text(text)
         if len(chunks) == 1:
             return translator.translate(text)
-        translated = [translator.translate(c) for c in chunks]
+        translated = list(_translate_pool.map(translator.translate, chunks))
         return "\n\n".join(translated)
     except Exception:
         return None
@@ -364,7 +383,7 @@ class SearchScreen(Screen):
         self.query_one(LoadingIndicator).set_class(True, "-visible")
         try:
             slug = self._results[idx]["slug"]
-            chapters = await self.source.fetch_chapters(slug)
+            chapters = await _get_chapters(self.source, slug)
             if chapters:
                 self.app.push_screen(ChapterListScreen(chapters, self.source.qualify_slug(slug), source=self.source))
             else:
@@ -436,7 +455,7 @@ class NovelListScreen(Screen):
                 self.notify("No source found for this novel.", timeout=3)
                 return
             bare = slug.split(":", 1)[-1] if ":" in slug else slug
-            chapters = await source.fetch_chapters(bare)
+            chapters = await _get_chapters(source, bare)
             if chapters:
                 self.app.push_screen(ChapterListScreen(chapters, source.qualify_slug(bare), source=source))
             else:
@@ -465,7 +484,7 @@ class ChapterListScreen(Screen):
     def compose(self):
         yield CustomHeader()
         yield Static(f"Chapters: 1-{len(self.chapters)}", classes="title")
-        seen = _get_seen(self.slug)
+        seen = progress.get_seen(self.slug)
         items = [ListItem(Label(("✓ " if i in seen else "  ") + c["title"])) for i, c in enumerate(self.chapters)]
         with ScrollableContainer():
             yield ListView(*items)
@@ -477,7 +496,7 @@ class ChapterListScreen(Screen):
         self.app.push_screen(ReaderScreen(self.chapters, self.slug, source=self.source, start=idx))
 
     def action_continue_reading(self):
-        idx = _get_last_read(self.slug)
+        idx = progress.get_last(self.slug)
         if idx is not None and 0 <= idx < len(self.chapters):
             self.app.push_screen(ReaderScreen(self.chapters, self.slug, source=self.source, start=idx))
         else:
@@ -544,7 +563,7 @@ class MyLibraryScreen(Screen):
         else:
             items = []
             for n in novels:
-                last = _get_last_read(n["slug"])
+                last = progress.get_last(n["slug"])
                 suffix = f" · Last: Ch. {last + 1}" if last is not None else ""
                 items.append(ListItem(Label(f"{n['title']}  ({n['count']} ch.){suffix}")))
             with ScrollableContainer():
@@ -637,7 +656,7 @@ class LocalChapterScreen(Screen):
                     rel = os.path.relpath(os.path.join(root, f), chap_dir)
                     self.files.append(rel)
             lv = self.query_one("#local-chapters", ListView)
-            seen = _get_seen(self.slug)
+            seen = progress.get_seen(self.slug)
             for i, fname in enumerate(self.files):
                 title = os.path.basename(fname).replace(".txt", "").replace("_", " ").title()
                 prefix = "✓ " if i in seen else "  "
@@ -666,7 +685,7 @@ class LocalChapterScreen(Screen):
             self.notify("Press x again to delete", timeout=3)
 
     def action_continue_reading(self):
-        idx = _get_last_read(self.slug)
+        idx = progress.get_last(self.slug)
         if idx is not None and 0 <= idx < len(self.files):
             self.app.push_screen(LocalReaderScreen(self.files, self.slug, start=idx))
         else:
@@ -680,8 +699,8 @@ class LocalChapterScreen(Screen):
             self.notify("No source found for this novel.", timeout=3)
             return
         try:
-            chapters = await source.fetch_chapters(
-                self.slug.split(":", 1)[-1] if ":" in self.slug else self.slug
+            chapters = await _get_chapters(
+                source, self.slug.split(":", 1)[-1] if ":" in self.slug else self.slug
             )
         except Exception:
             self.notify("Failed to fetch chapters. Check network.", timeout=3)
@@ -759,7 +778,7 @@ class LocalReaderScreen(Screen):
         self.query_one("#local-text").remove_class("rtl")
         self.query_one("#local-text").update(text)
         self.query_one(ScrollableContainer).scroll_home(animate=False)
-        _mark_seen(self.slug, self.current)
+        progress.mark_seen(self.slug, self.current)
 
     def action_next_chapter(self):
         if self.current < len(self.files) - 1:
@@ -789,8 +808,8 @@ class LocalReaderScreen(Screen):
             self.notify("No source found for this novel.", timeout=3)
             return
         try:
-            chapters = await source.fetch_chapters(
-                self.slug.split(":", 1)[-1] if ":" in self.slug else self.slug
+            chapters = await _get_chapters(
+                source, self.slug.split(":", 1)[-1] if ":" in self.slug else self.slug
             )
         except Exception:
             self.notify("Failed to fetch chapters. Check network.", timeout=3)
@@ -1301,7 +1320,7 @@ class ReaderScreen(Screen):
         self.query_one("#chapter-text").remove_class("rtl")
         self.query_one("#chapter-text").update(text)
         self.query_one(ScrollableContainer).scroll_home(animate=False)
-        _mark_seen(self.slug, self.current)
+        progress.mark_seen(self.slug, self.current)
 
     async def action_next_chapter(self):
         if self.current < len(self.chapters) - 1:
