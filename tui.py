@@ -1377,115 +1377,13 @@ class ReaderScreen(Screen):
 
 
 class CustomHeader(Horizontal):
-    DEFAULT_CSS = """
-    CustomHeader {
-        background: $panel;
-        color: $text;
-        height: 1;
-    }
-    CustomHeader > #header-title {
-        padding: 0 1;
-    }
-    """
-
     def compose(self):
         yield Static(self.app.title, id="header-title")
 
 
 class NovelFetchApp(App):
     TITLE = "NovelFetch"
-    CSS = """
-    Screen {
-        background: $surface;
-    }
-    .title {
-        text-align: center;
-        text-style: bold;
-        color: $accent;
-        padding: 0 1;
-    }
-    .banner {
-        text-align: center;
-        color: $accent;
-        padding: 2 1 0 1;
-    }
-    #chapter-text, #local-text {
-        margin: 0 1;
-    }
-    #chapter-text.rtl, #local-text.rtl {
-        text-align: right;
-    }
-    #chapter-header {
-        text-align: center;
-        color: $accent;
-        text-style: bold;
-        padding: 0 1;
-    }
-    RadioSet {
-        margin: 0 1;
-        background: transparent;
-        border: none;
-    }
-    RadioSet:focus {
-        border: none;
-    }
-    RadioSet > RadioButton > .toggle--button,
-    RadioSet > RadioButton.-on > .toggle--button {
-        color: transparent;
-        background: transparent;
-    }
-    RadioSet > RadioButton.-selected > .toggle--label {
-        background: transparent;
-        color: $accent;
-        text-style: bold underline;
-    }
-    ListView {
-        margin: 0 1;
-    }
-    ListItem {
-        padding: 0 1;
-    }
-    .loading {
-        display: none;
-        height: 3;
-        content-align: center middle;
-    }
-    .loading.-visible {
-        display: block;
-    }
-    #dl-bar {
-        margin: 1 2;
-    }
-    #dl-status {
-        margin: 0 2;
-        text-style: italic;
-        color: $text-muted;
-    }
-    #dl-novel {
-        text-align: center;
-        color: $text-muted;
-        padding: 0 1;
-    }
-    .dialog-overlay {
-        align: center middle;
-    }
-    .dialog-box {
-        width: 40%;
-        height: auto;
-        min-height: 6;
-        border: thick $accent;
-        background: $surface;
-        padding: 0 1;
-    }
-    Input {
-        margin: 0 1;
-    }
-    #page-info {
-        padding: 0 1;
-        text-style: italic;
-        color: $text-muted;
-    }
-    """
+    CSS_PATH = "novelfetch.tcss"
     def __init__(self):
         super().__init__()
         self.current_source = None
