@@ -58,10 +58,13 @@ python main.py
 ## How It Works
 
 **Architecture:**
+- `main.py` — `NovelFetchApp` (Textual `App` subclass), entry point
 - `sources/` — pluggable Source ABC; RoyalRoad implementation with httpx
-- `tui.py` — Textual TUI app: screens, widgets, navigation, translation, persistence, download dialog
-- `main.py` — Entry point (boots the TUI app)
-- `novels/` — Downloaded chapters and JSON state (`progress.json`, `settings.json`)
+- `screens/` — modular screen package: `browse.py`, `reader.py`, `library.py`, `download.py`, `shared.py`, `utils.py`
+- `progress.py` — `ProgressTracker`, `_scan_library`, `_slug_to_title`
+- `epub.py` — `_export_epub`
+- `translation.py` — `_translate_text`
+- `novels/` — Downloaded chapters and `progress.json`
 
 ---
 
