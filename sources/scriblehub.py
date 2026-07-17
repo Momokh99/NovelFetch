@@ -1,0 +1,188 @@
+from sources.base import Source
+from typing import Optional
+from bs4 import BeautifulSoup
+import urllib.parse
+import os
+from curl_cffi import requests as curl_requests
+import asyncio
+
+class ScribbleHubSource(Source):
+    _headers = {
+        "Referer": "https://www.scribblehub.com/",
+    }
+
+    @staticmethod
+    async def _fetch(url: str, data: Optional[dict] = None):
+        if data:
+            return await asyncio.to_thread(
+                lambda: curl_requests.post(url, data=data, impersonate="chrome120", headers=ScribbleHubSource._headers)
+            )
+        return await asyncio.to_thread(
+            lambda: curl_requests.get(url, impersonate="chrome120", headers=ScribbleHubSource._headers)
+        )
+
+    @property
+    def name(self) -> str:
+        return "scribblehub"
+
+    @property
+    def label(self) -> str:
+        return "ScribbleHub"
+    @property
+    def ascii_art(self) -> str:
+        return """\
+    ███████  ██████  ██████  ██ ██████   ██████  ██      ███████ ██   ██ ██    ██ ██████
+    ██      ██      ██      ██ ██   ██ ██       ██      ██      ██   ██ ██    ██ ██   ██
+    ███████ ██      ██      ██ ██████  ██   ███ ██      █████   ███████ ██    ██ ██████
+        ██ ██      ██      ██ ██   ██ ██    ██ ██      ██      ██   ██ ██    ██ ██   ██
+    ███████  ██████  ██████  ██ ██████   ██████  ███████ ███████ ██   ██  ██████  ██████"""
+
+    @property
+    def browse_urls(self) -> dict[str, str]:
+        return {
+            "hot": "https://www.scribblehub.com/series-ranking/",
+            "latest": "https://www.scribblehub.com/latest-series/",
+            "popular": "https://www.scribblehub.com/series-finder/?sf=1&sort=pageviews&order=desc",
+            "completed": "https://www.scribblehub.com/series-finder/?sf=1&cp=completed",
+        }
+
+    @property
+    def genres(self) -> dict[str, str]:
+        return {
+            "action": "Action",
+            "adventure": "Adventure",
+            "comedy": "Comedy",
+            "drama": "Drama",
+            "ecchi": "Ecchi",
+            "fanfiction": "Fanfiction",
+            "fantasy": "Fantasy",
+            "harem": "Harem",
+            "historical": "Historical",
+            "horror": "Horror",
+            "isekai": "Isekai",
+            "josei": "Josei",
+            "litrpg": "LitRPG",
+            "martial-arts": "Martial Arts",
+            "mature": "Mature",
+            "mecha": "Mecha",
+            "mystery": "Mystery",
+            "psychological": "Psychological",
+            "romance": "Romance",
+            "school-life": "School Life",
+            "sci-fi": "Sci-fi",
+            "seinen": "Seinen",
+            "slice-of-life": "Slice of Life",
+            "sports": "Sports",
+            "supernatural": "Supernatural",
+            "tragedy": "Tragedy",
+        }
+
+    async def fetch_url(self, url: str, params: Optional[dict] = None):
+        response = await self._fetch(url)
+        return BeautifulSoup(response.text, "html.parser")
+
+    def parse_slug(self, url: str) -> Optional[str]:
+        o = urllib.parse.urlparse(url)
+        if o.hostname and "scribblehub.com" in o.hostname:
+            parts = o.path.split("/")
+            if "series" in parts:
+                idx = parts.index("series")
+                slug = "/".join(parts[idx + 1:]).rstrip("/")
+                return slug
+
+    def qualify_slug(self, slug: str) -> str:
+        return f"scribblehub:{slug}"
+
+    def extract_novel_rows(self, soup) -> list[dict]:
+        results = []
+        rows = soup.select(".search_main_box")
+        for row in rows:
+            title_tag = row.select_one(".search_title a")
+            if not title_tag:
+                continue
+            href = title_tag.get("href", "")
+            slug = self.parse_slug(href)
+            img_tag = row.select_one(".search_img img")
+            cover = img_tag.get("src", "") if img_tag else ""
+            author_tag = row.select_one(".search_stats span[title='Author'] .a_un_st a")
+            author = author_tag.text.strip() if author_tag else "Unknown"
+            results.append({
+                "title": title_tag.text.strip(),
+                "author": author,
+                "slug": slug or "",
+                "latest": "",
+                "cover": cover,
+            })
+        return results
+
+    async def search(self, query: str, page: int = 1) -> tuple[list[dict], int]:
+        url = f"https://www.scribblehub.com/series-finder/?sf=1&sh={query}&pg={page}"
+        soup = await self.fetch_url(url)
+        novels = self.extract_novel_rows(soup)
+        total_pages = 50  # generous upper bound
+        if not novels:
+            total_pages = page - 1  # no results means went past the last page
+        return novels, total_pages
+
+    async def read_chapter(self, url: str) -> Optional[list[str]]:
+        soup = await self.fetch_url(url)
+        content = soup.select_one("#chp_raw")
+        if not content:
+            return None
+        return [p.get_text(strip=True) for p in content.find_all("p")]
+
+    async def save_chapter(self, url: str, title: str, slug: str) -> bool:
+        safe_title = title.replace("/", "-").replace(" ", "_")
+        path = f"novels/{slug}/{safe_title}.txt"
+        if os.path.exists(path):
+            return False
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        content = await self.read_chapter(url)
+        if not content:
+            return False
+        with open(path, "w", encoding="utf-8") as f:
+            for p in content:
+                f.write(p + "\n")
+        return True
+
+    async def cover_url(self, slug: str) -> str:
+        url = f"https://www.scribblehub.com/series/{slug}/"
+        soup = await self.fetch_url(url)
+        img = soup.select_one(".fic_image img")
+        if img:
+            src = img.get("data-src") or img.get("src") or ""
+            return str(src)
+        return ""
+
+    async def browse_genre(self, genre_slug: str) -> list[dict]:
+        url = f"https://www.scribblehub.com/genre/{genre_slug}/"
+        soup = await self.fetch_url(url)
+        return self.extract_novel_rows(soup)
+
+
+    async def fetch_chapters(self, slug: str) -> list[dict]:
+        url = f"https://www.scribblehub.com/series/{slug}/"
+        soup = await self.fetch_url(url)
+        mypostid_input = soup.select_one("input#mypostid")
+        if not mypostid_input:
+            return []
+        mypostid = mypostid_input.get("value", "")
+        ajax_url = "https://www.scribblehub.com/wp-admin/admin-ajax.php"
+        response = await self._fetch(ajax_url, data={
+            "action": "wi_getreleases_pagination",
+            "pagenum": -1,
+            "mypostid": mypostid,
+        })
+        chapter_soup = BeautifulSoup(response.text, "html.parser")
+        chapters = []
+        links = chapter_soup.select(".toc_ol a.toc_a")
+        for i, a in enumerate(reversed(links), 1):
+            href = str(a.get("href", ""))
+            if href and not href.startswith("http"):
+                href = "https://www.scribblehub.com" + href
+            chapters.append({
+                "num": i,
+                "title": a.text.strip(),
+                "url": href,
+            })
+        return chapters
