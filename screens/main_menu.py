@@ -10,6 +10,7 @@ class MainMenu(Screen):
         Binding("q", "quit", "Quit"),
         Binding("tab", "next_option", "", show=False),
         Binding("shift+tab", "prev_option", "", show=False),
+        Binding("s", "switch_source", "Switch Source"),
     ]
 
     def compose(self):
@@ -68,3 +69,11 @@ class MainMenu(Screen):
     def on_mount(self):
         self.app.current_source = list(REGISTRY.values())[0]
         self.query_one("#action-selector", RadioSet).focus()
+    def action_switch_source(self):
+        sources = list(REGISTRY.values())
+        current = self.app.current_source
+        idx = sources.index(current)
+        next_idx = (idx + 1) % len(sources)
+        self.app.current_source = sources[next_idx]
+        self.query_one(".banner", Static).update(sources[next_idx].ascii_art)
+        self.notify(f"Switched to {sources[next_idx].label}")
