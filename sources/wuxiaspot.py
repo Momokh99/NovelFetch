@@ -4,6 +4,7 @@ from bs4 import BeautifulSoup
 import urllib.parse
 import os
 import httpx
+import asyncio
 
 headers = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
@@ -18,6 +19,7 @@ class WuxiaSpotSource(Source):
             follow_redirects=True,
             timeout=30,
         )
+        self._cover_cache: dict[str, str] = {}
 
     @property
     def name(self) -> str:
@@ -31,9 +33,9 @@ class WuxiaSpotSource(Source):
         return """
     ██╗    ██╗██╗   ██╗██╗  ██╗██╗ █████╗    ███████╗██████╗  ██████╗ ████████╗
     ██║    ██║██║   ██║██║  ██║██║██╔══██╗   ██╔════╝██╔══██╗██╔═══██╗╚══██╔══╝
-    ██║ █╗ ██║██║   ██║███████║██║███████║   ███████╗██████╔╝██║   ██║   ██║   
-    ██║███╗██║██║   ██║██╔══██║██║██╔══██║   ╚════██║██╔═══╝ ██║   ██║   ██║   
-    ╚███╔███╔╝╚██████╔╝██║  ██║██║██║  ██║██╗███████║██║     ╚██████╔╝   ██║   
+    ██║ █╗ ██║██║   ██║███████║██║███████║   ███████╗██████╔╝██║   ██║   ██║
+    ██║███╗██║██║   ██║██╔══██║██║██╔══██║   ╚════██║██╔═══╝ ██║   ██║   ██║
+    ╚███╔███╔╝╚██████╔╝██║  ██║██║██║  ██║██╗███████║██║     ╚██████╔╝   ██║
      ╚══╝╚══╝  ╚═════╝ ╚═╝  ╚═╝╚═╝╚═╝  ╚═╝╚═╝╚══════╝╚═╝      ╚═════╝    ╚═╝"""
     @property
     def browse_urls(self) -> dict[str, str]:
@@ -104,8 +106,12 @@ class WuxiaSpotSource(Source):
         }
 
     async def fetch_url(self, url: str, params: Optional[dict] = None):
-        response = await self._client.get(url, params=params)
-        return BeautifulSoup(response.text, "html.parser")
+        try:
+            response = await self._client.get(url, params=params)
+            response.raise_for_status()
+            return BeautifulSoup(response.text, "html.parser")
+        except Exception:
+            return BeautifulSoup("", "html.parser")
 
     def parse_slug(self, url: str) -> Optional[str]:
         o = urllib.parse.urlparse(url)
@@ -133,6 +139,8 @@ class WuxiaSpotSource(Source):
             title = title_el.text.strip() if title_el else ""
             img = item.select_one(".novel-cover img.lazy")
             cover = img.get("data-src", "") if img else ""
+            if slug:
+                self._cover_cache[slug] = cover
             results.append({
                 "title": title,
                 "author": "Unknown",
@@ -143,18 +151,62 @@ class WuxiaSpotSource(Source):
         return results
 
     async def search(self, query: str, page: int = 1) -> tuple[list[dict], int]:
-        url = "https://www.wuxiaspot.com/e/search/index.php"
-        data = {
-            "keyboard": query,
-            "show": "title",
-            "tempid": "1",
-            "tbname": "news",
-        }
-        response = await self._client.post(url, data=data)
-        soup = BeautifulSoup(response.text, "html.parser")
-        novels = self.extract_novel_rows(soup)
-        # Determine total pages from pagination
+        try:
+            search_url = "https://www.wuxiaspot.com/e/search/index.php"
+            data = {
+                "keyboard": query,
+                "show": "title",
+                "tempid": "1",
+                "tbname": "news",
+            }
+            response = await self._client.post(search_url, data=data)
+            response.raise_for_status()
+            soup = BeautifulSoup(response.text, "html.parser")
+        except Exception:
+            return [], 0
+
         page_links = soup.select(".pagination a")
+        searchid = None
+        total_pages = 1
+        for a in page_links:
+            href = a.get("href", "")
+            text = a.text.strip()
+            if text.isdigit():
+                num = int(text)
+                if num > total_pages:
+                    total_pages = num
+            if "searchid=" in href:
+                qs = urllib.parse.parse_qs(urllib.parse.urlparse(href).query)
+                if "searchid" in qs:
+                    searchid = qs["searchid"][0]
+
+        if page > 1 and searchid:
+            try:
+                result_url = f"https://www.wuxiaspot.com/e/search/result/index.php?page={page - 1}&searchid={searchid}"
+                response = await self._client.get(result_url)
+                response.raise_for_status()
+                soup = BeautifulSoup(response.text, "html.parser")
+            except Exception:
+                return self.extract_novel_rows(soup), total_pages
+
+        novels = self.extract_novel_rows(soup)
+        return novels, total_pages
+
+    async def fetch_chapters(self, slug: str) -> list[dict]:
+        url = f"https://www.wuxiaspot.com/novel/{slug}.html"
+        soup = await self.fetch_url(url)
+        chapters = []
+
+        links = soup.select(".chapter-list li a")
+        for a in links:
+            href = a.get("href", "")
+            title_el = a.select_one(".chapter-title")
+            title = title_el.text.strip() if title_el else a.text.strip()
+            if href and not href.startswith("http"):
+                href = "https://www.wuxiaspot.com" + href
+            chapters.append({"num": 0, "title": title, "url": href})
+
+        page_links = soup.select("#chpagedlist .pagination a")
         total_pages = 1
         for a in page_links:
             text = a.text.strip()
@@ -162,61 +214,86 @@ class WuxiaSpotSource(Source):
                 num = int(text)
                 if num > total_pages:
                     total_pages = num
-        return novels, total_pages
 
-    async def fetch_chapters(self, slug: str) -> list[dict]:
-        url = f"https://www.wuxiaspot.com/novel/{slug}.html"
-        soup = await self.fetch_url(url)
-        chapters = []
-        links = soup.select(".chapter-list li a")
-        for i, a in enumerate(links, 1):
-            href = a.get("href", "")
-            title_el = a.select_one(".chapter-title")
-            title = title_el.text.strip() if title_el else a.text.strip()
-            if href and not href.startswith("http"):
-                href = "https://www.wuxiaspot.com" + href
-            chapters.append({
-                "num": i,
-                "title": title,
-                "url": href,
-            })
+        async def fetch_page(p):
+            try:
+                page_url = f"https://www.wuxiaspot.com/e/extend/fy.php?page={p}&wjm={slug}"
+                resp = await self._client.get(page_url)
+                resp.raise_for_status()
+                page_soup = BeautifulSoup(resp.text, "html.parser")
+                page_chapters = []
+                for a in page_soup.select(".chapter-list li a"):
+                    href = a.get("href", "")
+                    title_el = a.select_one(".chapter-title")
+                    title = title_el.text.strip() if title_el else a.text.strip()
+                    if href and not href.startswith("http"):
+                        href = "https://www.wuxiaspot.com" + href
+                    page_chapters.append({"num": 0, "title": title, "url": href})
+                return page_chapters
+            except Exception:
+                return []
+
+        if total_pages > 1:
+            results = await asyncio.gather(*[fetch_page(p) for p in range(1, total_pages)])
+            for page_chs in results:
+                chapters.extend(page_chs)
+
+        for i, ch in enumerate(chapters, 1):
+            ch["num"] = i
         return chapters
 
 
     async def read_chapter(self, url: str) -> Optional[list[str]]:
-        soup = await self.fetch_url(url)
-        content = soup.select_one(".chapter-content")
-        if not content:
+        try:
+            soup = await self.fetch_url(url)
+            content = soup.select_one(".chapter-content")
+            if not content:
+                return None
+            text = content.get_text("\n", strip=True)
+            return [p.strip() for p in text.split("\n") if p.strip()]
+        except Exception:
             return None
-        return [p.get_text(strip=True) for p in content.find_all("p")]
 
     async def save_chapter(self, url: str, title: str, slug: str) -> bool:
-        safe_title = title.replace("/", "-").replace(" ", "_")
-        path = f"novels/{slug}/{safe_title}.txt"
-        if os.path.exists(path):
+        try:
+            safe_title = title.replace("/", "-").replace(" ", "_")
+            path = f"novels/{slug}/{safe_title}.txt"
+            if os.path.exists(path):
+                return False
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+            content = await self.read_chapter(url)
+            if not content:
+                return False
+            with open(path, "w", encoding="utf-8") as f:
+                for p in content:
+                    f.write(p + "\n")
+            return True
+        except Exception:
             return False
-        os.makedirs(os.path.dirname(path), exist_ok=True)
-        content = await self.read_chapter(url)
-        if not content:
-            return False
-        with open(path, "w", encoding="utf-8") as f:
-            for p in content:
-                f.write(p + "\n")
-        return True
 
     async def cover_url(self, slug: str) -> str:
-        url = f"https://www.wuxiaspot.com/novel/{slug}.html"
-        soup = await self.fetch_url(url)
-        img = soup.select_one(".cover img.lazy")
-        if img:
-            src = img.get("data-src") or img.get("src") or ""
-            return str(src)
+        try:
+            cached = self._cover_cache.get(slug)
+            if cached:
+                return cached
+            url = f"https://www.wuxiaspot.com/novel/{slug}.html"
+            soup = await self.fetch_url(url)
+            img = soup.select_one(".cover img.lazy")
+            if img:
+                src = img.get("data-src") or img.get("src") or ""
+                self._cover_cache[slug] = str(src)
+                return str(src)
+        except Exception:
+            pass
         return ""
 
     async def browse_genre(self, genre_slug: str) -> list[dict]:
-        url = f"https://www.wuxiaspot.com/list/{genre_slug}/all-newstime-0.html"
-        soup = await self.fetch_url(url)
-        return self.extract_novel_rows(soup)
+        try:
+            url = f"https://www.wuxiaspot.com/list/{genre_slug}/all-newstime-0.html"
+            soup = await self.fetch_url(url)
+            return self.extract_novel_rows(soup)
+        except Exception:
+            return []
 
 
 
