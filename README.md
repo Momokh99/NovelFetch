@@ -31,7 +31,7 @@ A TUI novel reader with a pluggable source system. Browse, search, download, and
 Key bindings in the reader:
 
 | Key | Action |
-|-----|--------|
+| ----- | -------- |
 | `n` / `p` | Next / Prev chapter |
 | `j` | Jump to chapter number |
 | `d` | Download dialog (All / Range / Translated) |
@@ -58,6 +58,7 @@ python main.py
 ## How It Works
 
 **Architecture:**
+
 - `main.py` — `NovelFetchApp` (Textual `App` subclass), entry point
 - `sources/` — pluggable Source ABC; RoyalRoad implementation with httpx
 - `screens/` — modular screen package: `browse.py`, `reader.py`, `library.py`, `download.py`, `shared.py`, `utils.py`
@@ -76,10 +77,20 @@ python main.py
 - [x] Translation (Google Translate, 12 languages, RTL support)
 - [ ] Better text formatting (italics, line breaks, spacing)
 - [ ] Search filters (genre, status, rating)
-- [x] Multi-source architecture (RoyalRoad active; ready for more)
+- [x] Multi-source architecture (RoyalRoad, ScribbleHub, WuxiaSpot)
 - [x] Download dialog (All, Range, Translated)
-- [ ] Offline reading mode
+- [x] Offline reading mode
 - [ ] Reading history across sessions
+- [ ] **Android app (KivyMD)** — cross-platform mobile UI reusing all source modules
+  - [ ] Source selection screen (cards for each source)
+  - [ ] Search with debounce + pagination
+  - [ ] Browse (hot, latest, popular, genres)
+  - [ ] Chapter list with read progress checkmarks
+  - [ ] Reader screen (prev/next, font size, night mode, translation)
+  - [ ] Download dialog (single, all, range, translated)
+  - [ ] Library screen (local novels, resume reading)
+  - [ ] Settings (dark mode, clear cache)
+  - [ ] APK build via Buildozer
 
 ---
 
