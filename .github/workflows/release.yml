@@ -30,9 +30,16 @@ jobs:
           if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
         shell: bash
 
-      - name: Build TUI binary
+      - name: Build TUI binary (Linux/macOS)
+        if: matrix.os != 'windows-latest'
         run: |
-          pyinstaller --onefile --console --name novelfetch main.py
+          pyinstaller --onefile --console --name novelfetch --add-data "novelfetch.tcss:." main.py
+        shell: bash
+
+      - name: Build TUI binary (Windows)
+        if: matrix.os == 'windows-latest'
+        run: |
+          pyinstaller --onefile --console --name novelfetch --add-data "novelfetch.tcss;." main.py
         shell: bash
 
       - name: Archive Linux/macOS binary
