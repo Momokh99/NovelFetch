@@ -1,0 +1,11 @@
+# Desktop dev deps for the KivyMD app. On Arch Linux, do NOT pip-install kivy
+# (no cp314 wheel): install the system package instead and use a venv with
+# --system-site-packages:
+#   sudo pacman -S python-kivy
+#   python3.14 -m venv --system-site-packages android_env
+kivymd==1.2.0
+httpx>=0.28.0
+curl_cffi>=0.15.0
+beautifulsoup4>=4.14.0
+deep-translator>=1.11.0
+EbookLib>=0.20
