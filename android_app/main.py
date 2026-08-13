@@ -21,7 +21,7 @@ class NovelFetchApp(MDApp):
     def build(self):
         if platform == "android":
             os.chdir(self.user_data_dir)
-        self.theme_cls.theme_style = "dark"
+        self.theme_cls.theme_style = "Dark"
         self.theme_cls.primary_palette = "Orange"
 
         from async_runner import async_loop

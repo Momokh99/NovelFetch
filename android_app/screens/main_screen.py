@@ -8,6 +8,7 @@ from kivymd.uix.bottomnavigation import (
 from kivymd.uix.label import MDLabel
 
 from screens.home_tab import HomeTab
+from screens.search_tab import SearchTab
 from screens.novel_list import NovelListScreen
 from screens.chapter_list import ChapterListScreen
 
@@ -27,7 +28,7 @@ class MainScreen(BoxLayout):
         self.nav.add_widget(MDBottomNavigationItem(
             HomeTab(), name="home", text="Home", icon="home"))
         self.nav.add_widget(MDBottomNavigationItem(
-            _placeholder("Search"), name="search", text="Search", icon="magnify"))
+            SearchTab(), name="search", text="Search", icon="magnify"))
         self.nav.add_widget(MDBottomNavigationItem(
             _placeholder("Settings"), name="settings", text="Settings", icon="cog"))
         tabs.add_widget(self.nav)
