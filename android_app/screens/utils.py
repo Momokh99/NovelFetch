@@ -4,9 +4,15 @@ import json
 import os
 
 from kivymd.app import MDApp
+from kivymd.uix.label import MDLabel
 from kivymd.uix.snackbar import MDSnackbar
 
 from async_runner import async_loop
+
+
+def _snack(text):
+    """KivyMD 1.2.0 MDSnackbar takes child widgets, not a text kwarg."""
+    MDSnackbar(MDLabel(text=text)).open()
 
 
 def _get_source(slug):
@@ -63,14 +69,19 @@ async def _save_cover(source, qualified_slug):
         return ""
 
 
-async def _download_novel(source, qualified_slug, chapters, title):
+async def _download_novel(source, qualified_slug, chapters, title,
+                          total=None, progress_cb=None):
     """Save every chapter via source.save_chapter, download the cover, and
     write meta.json with the real title + cover file.
+
     Returns (saved, failed): 'failed' counts chapters that could not be
-    fetched, so callers can tell a network failure apart from 'already saved'."""
+    fetched, so callers can tell a network failure apart from 'already saved'.
+    total: full novel chapter count for meta.json (so a partial download does
+    not misreport the library size). progress_cb(done, saved) is invoked after
+    each chapter is processed."""
     saved = 0
     failed = 0
-    for ch in chapters:
+    for i, ch in enumerate(chapters):
         safe_title = ch["title"].replace("/", "-").replace(" ", "_")
         path = os.path.join("novels", qualified_slug, safe_title + ".txt")
         if os.path.exists(path):
@@ -82,12 +93,14 @@ async def _download_novel(source, qualified_slug, chapters, title):
                 failed += 1
         except Exception:
             failed += 1
+        if progress_cb is not None:
+            progress_cb(i + 1, saved)
 
     cover_file = await _save_cover(source, qualified_slug)
 
     try:
         os.makedirs(os.path.join("novels", qualified_slug), exist_ok=True)
-        meta = {"title": title, "cover": cover_file, "chapters": len(chapters)}
+        meta = {"title": title, "cover": cover_file, "chapters": total or len(chapters)}
         with open(os.path.join("novels", qualified_slug, "meta.json"), "w") as f:
             json.dump(meta, f)
     except OSError:
@@ -103,7 +116,7 @@ def _open_chapters_for(novel, source, set_loading=None):
             set_loading(state)
 
     if source is None:
-        MDSnackbar(text="No source for this novel.").open()
+        _snack("No source for this novel.")
         _set(False)
         return
 
@@ -119,14 +132,14 @@ def _open_chapters_for(novel, source, set_loading=None):
     def on_done(result, error):
         _set(False)
         if error is not None:
-            MDSnackbar(text="Failed to fetch chapters. Check your connection.").open()
+            _snack("Failed to fetch chapters. Check your connection.")
             return
         chapters, cover = result
         if not chapters:
             if getattr(source, "blocked", False):
-                MDSnackbar(text=f"{source.label} is blocked by anti-bot protection.").open()
+                _snack(f"{source.label} is blocked by anti-bot protection.")
             else:
-                MDSnackbar(text="No chapters found.").open()
+                _snack("No chapters found.")
         else:
             MDApp.get_running_app().goto(
                 "chapter_list",

@@ -6,8 +6,14 @@ from kivy.uix.scrollview import ScrollView
 from kivymd.app import MDApp
 from kivymd.uix.boxlayout import MDBoxLayout
 from kivymd.uix.button import MDRaisedButton
+from kivymd.uix.dialog import MDDialog
 from kivymd.uix.label import MDLabel
-from kivymd.uix.list import MDList, OneLineListItem
+from kivymd.uix.list import (
+    MDList,
+    OneLineAvatarIconListItem,
+    OneLineListItem,
+    CheckboxLeftWidget,
+)
 from kivymd.uix.screen import MDScreen
 from kivymd.uix.snackbar import MDSnackbar
 from kivymd.uix.toolbar import MDTopAppBar
@@ -18,8 +24,9 @@ from screens import utils
 
 
 class ChapterListScreen(MDScreen):
-    """Chapters of one novel, with read ✓ marks and a Continue shortcut.
-    Reading itself is the Phase 3 reader screen; taps are placeholders for now."""
+    """Chapters of one novel, with read ✓ marks, a Continue shortcut, and
+    selection-based downloading: enter select mode to check chapters, use the
+    '…' menu for Download all."""
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -29,13 +36,17 @@ class ChapterListScreen(MDScreen):
         self._busy = False
         self._base_info = ""
         self._cover = ""
-        self._pending_idx = None
         self._novel_title = ""
+        self._select_mode = False
+        self._selected: set[int] = set()
 
         self.topbar = MDTopAppBar(
             title="Chapter list",
-            left_action_items=[["arrow-left", lambda *_: self._back()]],
-            right_action_items=[["download", lambda *_: self._download_all()]],
+            left_action_items=[["arrow-left", lambda *_: self._left_action()]],
+            right_action_items=[
+                ["select-multiple", lambda *_: self._toggle_select_mode()],
+                ["dots-vertical", lambda *_: self._open_overflow()],
+            ],
         )
         self.add_widget(self.topbar)
 
@@ -70,12 +81,21 @@ class ChapterListScreen(MDScreen):
             height="48dp",
             md_bg_color=[0.2, 0.5, 0.9, 1],
         )
-        self.continue_btn.bind(on_release=lambda *_: self._notify("Reader in Phase 3"))
+        self.continue_btn.bind(on_release=lambda *_: self._continue())
+
+        self.download_btn = MDRaisedButton(
+            text="Download selected",
+            size_hint=(1, None),
+            height="48dp",
+            md_bg_color=[0.2, 0.5, 0.9, 1],
+        )
+        self.download_btn.bind(on_release=lambda *_: self._download_selected())
 
         body = ScrollView()
         content = MDBoxLayout(orientation="vertical", adaptive_height=True)
         content.add_widget(header)
         content.add_widget(self.continue_btn)
+        content.add_widget(self.download_btn)
         self.list_view = MDList()
         content.add_widget(self.list_view)
         body.add_widget(content)
@@ -104,17 +124,35 @@ class ChapterListScreen(MDScreen):
         seen = progress.get_seen(self.slug) if self.slug else set()
         last = progress.get_last(self.slug)
         # Collapse the Continue button to zero height instead of leaving a
-        # 48dp dead gap when there's nothing to continue yet.
-        self.continue_btn.opacity = 1 if last is not None else 0
-        self.continue_btn.disabled = last is None
-        self.continue_btn.height = "48dp" if last is not None else 0
+        # 48dp dead gap when there's nothing to continue yet. In select mode
+        # both Continue and Download-selected are replaced by the selection UI.
+        self.continue_btn.opacity = 1 if (last is not None and not self._select_mode) else 0
+        self.continue_btn.disabled = last is None or self._select_mode
+        self.continue_btn.height = "48dp" if (last is not None and not self._select_mode) else 0
+
+        # Download-selected button: visible only in select mode with a selection.
+        n = len(self._selected)
+        self.download_btn.opacity = 1 if (self._select_mode and n) else 0
+        self.download_btn.disabled = not (self._select_mode and n)
+        self.download_btn.height = "48dp" if (self._select_mode and n) else 0
+        if n:
+            self.download_btn.text = f"Download selected ({n})"
 
         for i, ch in enumerate(self.chapters):
             prefix = "✓ " if i in seen else "  "
-            item = OneLineListItem(
-                text=prefix + ch["title"],
-                on_release=lambda *_, idx=i: self._open(idx),
-            )
+            if self._select_mode:
+                item = OneLineAvatarIconListItem(
+                    text=prefix + ch["title"],
+                    on_release=lambda *_, idx=i: self._toggle_selection(idx),
+                )
+                cbx = CheckboxLeftWidget(active=i in self._selected)
+                cbx.bind(on_active=lambda w, val, idx=i: self._toggle_selection(idx, active=val))
+                item.add_widget(cbx)
+            else:
+                item = OneLineListItem(
+                    text=prefix + ch["title"],
+                    on_release=lambda *_, idx=i: self._open(idx),
+                )
             self.list_view.add_widget(item)
 
         # Fresh chapter data may arrive while the widget is already mounted
@@ -122,40 +160,110 @@ class ChapterListScreen(MDScreen):
         Clock.schedule_once(lambda dt: self.info_label.parent._trigger_layout(), 0)
 
     def _open(self, idx):
-        # Reader screen lands in Phase 3; folder the index now.
-        self._pending_idx = idx
-        self._notify("Reader screen in Phase 3")
+        MDApp.get_running_app().goto(
+            "reader",
+            chapters=self.chapters,
+            slug=self.slug,
+            source=self.source,
+            title=self._novel_title,
+            start=idx,
+        )
+
+    def _continue(self):
+        last = progress.get_last(self.slug)
+        if last is not None:
+            self._open(last)
+
+    # ---------- selection mode ----------
+
+    def _left_action(self):
+        if self._select_mode:
+            self._exit_select_mode()
+        else:
+            MDApp.get_running_app().back()
+
+    def _toggle_select_mode(self):
+        self._select_mode = not self._select_mode
+        if not self._select_mode:
+            self._selected.clear()
+        self._rebuild()
+
+    def _exit_select_mode(self):
+        self._select_mode = False
+        self._selected.clear()
+        self._rebuild()
+
+    def _toggle_selection(self, idx, active=None):
+        # 'active' is None when toggled by a row tap (flip), else the checkbox's
+        # own state (avoid flipping twice when a checkbox tap fires on_active).
+        if active is None:
+            if idx in self._selected:
+                self._selected.discard(idx)
+            else:
+                self._selected.add(idx)
+        else:
+            if active:
+                self._selected.add(idx)
+            else:
+                self._selected.discard(idx)
+        self._sync_checkboxes()
+        self._update_download_button()
+
+    def _sync_checkboxes(self):
+        # Sync every row's checkbox to _selected without re-triggering handlers.
+        for i, w in enumerate(self.list_view.children):
+            cbx = w.children[0] if w.children else None
+            if isinstance(cbx, CheckboxLeftWidget):
+                index = len(self.chapters) - 1 - i
+                if cbx.active != (index in self._selected):
+                    cbx.active = index in self._selected
+
+    def _update_download_button(self):
+        n = len(self._selected)
+        self.download_btn.opacity = 1 if (self._select_mode and n) else 0
+        self.download_btn.disabled = not (self._select_mode and n)
+        self.download_btn.height = "48dp" if (self._select_mode and n) else 0
+        if n:
+            self.download_btn.text = f"Download selected ({n})"
+
+    # ---------- overflow menu ----------
+
+    def _open_overflow(self):
+        rows = MDList()
+        rows.add_widget(OneLineListItem(
+            text="Download all",
+            on_release=lambda *_: self._download_subset(self.chapters),
+        ))
+        # Instance ref: a dialog with no strong ref can be GC'd mid-open.
+        self._overflow = MDDialog(title="Options", type="custom", content_cls=rows)
+        self._overflow.open()
+
+    def _download_subset(self, subset):
+        dialog = getattr(self, "_overflow", None)
+        if dialog is not None:
+            dialog.dismiss()
+        if not subset or self._busy or not self.source or not self.slug:
+            return
+        MDApp.get_running_app().goto(
+            "download_progress",
+            chapters=subset,
+            slug=self.slug,
+            source=self.source,
+            title=self._novel_title,
+            total=len(self.chapters),
+        )
+
+    def _download_selected(self):
+        subset = [ch for i, ch in enumerate(self.chapters) if i in self._selected]
+        self._download_subset(subset)
+
+    # ---------- legacy direct download ----------
 
     def _download_all(self):
-        if self._busy or not self.source or not self.slug:
-            return
-        self._busy = True
-        self.info_label.text = "Downloading…"
-
-        async def coro():
-            return await utils._download_novel(
-                self.source, self.slug, self.chapters, self._novel_title)
-
-        async_loop.run(coro(), self._on_download_done)
-
-    def _on_download_done(self, result, error):
-        self._busy = False
-        if error is not None:
-            self.info_label.text = self._base_info
-            self._notify("Download failed.")
-            return
-        saved, failed = result
-        self.info_label.text = self._base_info
-        if saved:
-            self._notify(f"Saved {saved} chapters to library.")
-            MDApp.get_running_app().root.homescreen_library_refresh()
-        elif failed:
-            self._notify("Download failed. Check your connection.")
-        else:
-            self._notify("Novel is already in the library.")
+        self._download_subset(self.chapters)
 
     def _back(self):
         MDApp.get_running_app().back()
 
     def _notify(self, text):
-        MDSnackbar(text=text).open()
+        MDSnackbar(MDLabel(text=text)).open()

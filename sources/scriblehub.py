@@ -3,7 +3,6 @@ from typing import Optional
 from bs4 import BeautifulSoup
 import urllib.parse
 import os
-from curl_cffi import requests as curl_requests
 import asyncio
 
 class ScribbleHubSource(Source):
@@ -19,6 +18,26 @@ class ScribbleHubSource(Source):
         return self._blocked
 
     async def _fetch(self, url: str, data: Optional[dict] = None):
+        # curl_cffi is a compiled AAPI extension that python-for-android cannot
+        # cross-build reliably. Import lazily so the module (and the whole app)
+        # still imports when it is unavailable; requests fall back to plain
+        # http for a source that is Cloudflare-blocked anyway.
+        try:
+            from curl_cffi import requests as curl_requests
+        except (ImportError, OSError):
+            import httpx
+            if data:
+                resp = await asyncio.to_thread(
+                    lambda: httpx.post(url, data=data, follow_redirects=True,
+                                       headers=ScribbleHubSource._headers))
+            else:
+                resp = await asyncio.to_thread(
+                    lambda: httpx.get(url, follow_redirects=True,
+                                      headers=ScribbleHubSource._headers))
+            if resp.status_code in (403, 429) or "Just a moment" in resp.text:
+                self._blocked = True
+            return resp
+
         if data:
             response = await asyncio.to_thread(
                 lambda: curl_requests.post(url, data=data, impersonate="chrome120", headers=ScribbleHubSource._headers)

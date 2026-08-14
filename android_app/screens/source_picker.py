@@ -1,6 +1,7 @@
 from kivymd.app import MDApp
 from kivymd.uix.boxlayout import MDBoxLayout
 from kivymd.uix.dialog import MDDialog
+from kivymd.uix.label import MDLabel
 from kivymd.uix.list import MDList, TwoLineAvatarListItem, IconLeftWidget
 from kivymd.uix.snackbar import MDSnackbar
 
@@ -21,7 +22,7 @@ def open_source_picker():
     def on_select(source):
         app.current_source = source
         _dialog.dismiss()
-        MDSnackbar(text=f"Switched to {source.label}").open()
+        MDSnackbar(MDLabel(text=f"Switched to {source.label}")).open()
 
     content = MDList()
     for source in REGISTRY.values():

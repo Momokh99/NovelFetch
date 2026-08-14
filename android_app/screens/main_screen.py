@@ -5,16 +5,14 @@ from kivymd.uix.bottomnavigation import (
     MDBottomNavigation,
     MDBottomNavigationItem,
 )
-from kivymd.uix.label import MDLabel
 
 from screens.home_tab import HomeTab
 from screens.search_tab import SearchTab
+from screens.settings_tab import SettingsTab
 from screens.novel_list import NovelListScreen
 from screens.chapter_list import ChapterListScreen
-
-
-def _placeholder(title: str) -> MDLabel:
-    return MDLabel(text=f"{title} — coming soon", halign="center")
+from screens.reader import ReaderScreen
+from screens.download_dialog import DownloadProgressScreen
 
 
 class MainScreen(BoxLayout):
@@ -32,12 +30,14 @@ class MainScreen(BoxLayout):
         self.nav.add_widget(MDBottomNavigationItem(
             SearchTab(), name="search", text="Search", icon="magnify"))
         self.nav.add_widget(MDBottomNavigationItem(
-            _placeholder("Settings"), name="settings", text="Settings", icon="cog"))
+            SettingsTab(), name="settings", text="Settings", icon="cog"))
         tabs.add_widget(self.nav)
 
         self.manager.add_widget(tabs)
         self.manager.add_widget(NovelListScreen(name="novel_list"))
         self.manager.add_widget(ChapterListScreen(name="chapter_list"))
+        self.manager.add_widget(ReaderScreen(name="reader"))
+        self.manager.add_widget(DownloadProgressScreen(name="download_progress"))
 
         self.add_widget(self.manager)
 

@@ -6,6 +6,7 @@ from kivy.metrics import dp
 from kivy.uix.image import AsyncImage
 from kivy.uix.scrollview import ScrollView
 
+from kivymd.app import MDApp
 from kivymd.uix.boxlayout import MDBoxLayout
 from kivymd.uix.button import MDFlatButton
 from kivymd.uix.dialog import MDDialog
@@ -98,6 +99,8 @@ class HomeTab(MDScreen):
         dialog = MDDialog(
             title=title or novel["title"],
             buttons=[
+                MDFlatButton(text="Read",
+                             on_release=lambda *_: self._read(slug, dialog)),
                 MDFlatButton(text="Delete",
                              on_release=lambda *_: self._delete(slug, dialog)),
                 MDFlatButton(text="Export EPUB",
@@ -105,6 +108,18 @@ class HomeTab(MDScreen):
             ],
         )
         dialog.open()
+
+    def _read(self, slug, dialog):
+        dialog.dismiss()
+        last = progress.get_last(slug)
+        MDApp.get_running_app().goto(
+            "reader",
+            chapters=None,          # reader scans novels/{slug}/*.txt
+            slug=slug,
+            source=utils._get_source(slug),
+            title="Reader",
+            start=last or 0,
+        )
 
     def _export(self, slug, dialog):
         dialog.dismiss()
@@ -154,4 +169,4 @@ class HomeTab(MDScreen):
     # ---------- helpers ----------
 
     def _notify(self, text):
-        MDSnackbar(text=text).open()
+        MDSnackbar(MDLabel(text=text)).open()

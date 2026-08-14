@@ -92,10 +92,10 @@ class SearchTab(MDScreen):
             return
         source = MDApp.get_running_app().current_source
         if source is None:
-            MDSnackbar(text="No source selected.").open()
+            MDSnackbar(MDLabel(text="No source selected.")).open()
             return
         if not source.search_supported:
-            MDSnackbar(text="Search is not supported for this source.").open()
+            MDSnackbar(MDLabel(text="Search is not supported for this source.")).open()
             return
 
         async def coro():
@@ -113,13 +113,13 @@ class SearchTab(MDScreen):
         blocked = getattr(source, "blocked", False)
         if error is not None:
             self._clear_results()
-            MDSnackbar(text="Search failed. Check your connection.").open()
+            MDSnackbar(MDLabel(text="Search failed. Check your connection.")).open()
         elif blocked:
             self._clear_results()
-            MDSnackbar(text=f"{source.label} is blocked by anti-bot protection.").open()
+            MDSnackbar(MDLabel(text=f"{source.label} is blocked by anti-bot protection.")).open()
         elif not novels:
             self._clear_results()
-            MDSnackbar(text="No novels found.").open()
+            MDSnackbar(MDLabel(text="No novels found.")).open()
         else:
             self._show_results(novels)
 

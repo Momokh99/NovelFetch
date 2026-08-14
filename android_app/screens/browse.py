@@ -1,6 +1,7 @@
 from kivymd.app import MDApp
 from kivymd.uix.boxlayout import MDBoxLayout
 from kivymd.uix.dialog import MDDialog
+from kivymd.uix.label import MDLabel
 from kivymd.uix.list import MDList, OneLineListItem
 from kivymd.uix.snackbar import MDSnackbar
 
@@ -108,7 +109,7 @@ class BrowseSection(MDBoxLayout):
         self.browse_list.disabled = busy   # rows ignore taps while fetching
 
     def _notify(self, text):
-        MDSnackbar(text=text).open()
+        MDSnackbar(MDLabel(text=text)).open()
 
 
 
