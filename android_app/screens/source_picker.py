@@ -7,6 +7,10 @@ from kivymd.uix.snackbar import MDSnackbar
 from sources import REGISTRY
 
 
+# Module-level ref: a dialog with no strong ref can be GC'd mid-open.
+_dialog = None
+
+
 def open_source_picker():
     """Modal list of every source from the shared REGISTRY.
 
@@ -16,7 +20,7 @@ def open_source_picker():
     app = MDApp.get_running_app()
     def on_select(source):
         app.current_source = source
-        dialog.dismiss()
+        _dialog.dismiss()
         MDSnackbar(text=f"Switched to {source.label}").open()
 
     content = MDList()
@@ -31,5 +35,6 @@ def open_source_picker():
         item.add_widget(IconLeftWidget(icon="book-open-variant"))
         content.add_widget(item)
 
-    dialog = MDDialog(title="Select source", type="custom", content_cls=content)
-    dialog.open()
+    global _dialog
+    _dialog = MDDialog(title="Select source", type="custom", content_cls=content)
+    _dialog.open()

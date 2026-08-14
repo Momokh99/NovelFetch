@@ -72,6 +72,9 @@ class BrowseSection(MDBoxLayout):
         if self._busy:
             return
         source = MDApp.get_running_app().current_source
+        if source is None:
+            self._notify("No source selected.")
+            return
 
         async def coro():
             return await source.browse_genre(genre_slug)
@@ -83,15 +86,18 @@ class BrowseSection(MDBoxLayout):
 
     def _on_done(self, novels, error, title):
         self._set_busy(False)
+        source = MDApp.get_running_app().current_source
         if error is not None:
             self._notify("Failed to fetch novels. Check your connection.")
+        elif getattr(source, "blocked", False):
+            self._notify(f"{source.label} is blocked by anti-bot protection.")
         elif not novels:
             self._notify("No novels found.")
         else:
             MDApp.get_running_app().goto(
                 "novel_list",
                 novels=novels,
-                source=MDApp.get_running_app().current_source,
+                source=source,
                 title=title,
             )
 

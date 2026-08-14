@@ -11,15 +11,25 @@ class ScribbleHubSource(Source):
         "Referer": "https://www.scribblehub.com/",
     }
 
-    @staticmethod
-    async def _fetch(url: str, data: Optional[dict] = None):
+    def __init__(self):
+        self._blocked = False
+
+    @property
+    def blocked(self) -> bool:
+        return self._blocked
+
+    async def _fetch(self, url: str, data: Optional[dict] = None):
         if data:
-            return await asyncio.to_thread(
+            response = await asyncio.to_thread(
                 lambda: curl_requests.post(url, data=data, impersonate="chrome120", headers=ScribbleHubSource._headers)
             )
-        return await asyncio.to_thread(
-            lambda: curl_requests.get(url, impersonate="chrome120", headers=ScribbleHubSource._headers)
-        )
+        else:
+            response = await asyncio.to_thread(
+                lambda: curl_requests.get(url, impersonate="chrome120", headers=ScribbleHubSource._headers)
+            )
+        if response.status_code in (403, 429) or "Just a moment" in response.text:
+            self._blocked = True
+        return response
 
     @property
     def name(self) -> str:

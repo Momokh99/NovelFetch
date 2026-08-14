@@ -2,13 +2,15 @@ import os
 import shutil
 
 from kivy.clock import Clock
+from kivy.metrics import dp
+from kivy.uix.image import AsyncImage
 from kivy.uix.scrollview import ScrollView
 
 from kivymd.uix.boxlayout import MDBoxLayout
 from kivymd.uix.button import MDFlatButton
 from kivymd.uix.dialog import MDDialog
 from kivymd.uix.label import MDLabel
-from kivymd.uix.list import MDList, TwoLineListItem
+from kivymd.uix.list import MDList
 from kivymd.uix.screen import MDScreen
 from kivymd.uix.snackbar import MDSnackbar
 from kivymd.uix.toolbar import MDTopAppBar
@@ -16,7 +18,8 @@ from kivymd.uix.toolbar import MDTopAppBar
 from async_runner import async_loop          # Phase 0 bridge: UI never blocks
 from progress import _scan_library, _slug_to_title, progress
 from epub import _export_epub
-from screens import utils                    # _get_source helper
+from screens import utils                    # _get_source helper, meta
+from screens.novel_list import _TapCard
 from screens.source_picker import open_source_picker
 
 
@@ -52,23 +55,48 @@ class HomeTab(MDScreen):
         novels = _scan_library()
         self.library_list.clear_widgets()
         for n in novels:
+            meta = utils._read_meta(n["slug"])   # {"title", "cover", "chapters"} or {}
+            title = meta.get("title") or n["title"]
             last = progress.get_last(n["slug"])    # stored chapter index or None
-            sub = f"{n['count']} chapters"
+            count = meta.get("chapters") or n["count"]
+            sub = f"{count} chapters"
             if last is not None:
                 sub += f" · Last: Ch. {last + 1}"  # +1: index -> human number
-            self.library_list.add_widget(TwoLineListItem(
-                text=n["title"],
-                secondary_text=sub,
-                on_release=lambda *_, nv=n: self.library_menu(nv),
-            ))
+
+            row = _TapCard(
+                orientation="horizontal",
+                size_hint_y=None,
+                height=dp(120),
+                padding="12dp",
+                spacing="16dp",
+            )
+            cover = os.path.join("novels", n["slug"], meta["cover"]) if meta.get("cover") else ""
+            img = AsyncImage(
+                source=cover,
+                size_hint=(None, 1),
+                width=dp(70),
+                keep_ratio=True,
+                allow_stretch=True,
+            )
+            texts = MDBoxLayout(orientation="vertical", size_hint_y=1, spacing="2dp")
+            texts.add_widget(MDLabel(
+                text=title, bold=True,
+                font_style="Subtitle1", size_hint_y=None, height="28dp"))
+            texts.add_widget(MDLabel(
+                text=sub, theme_text_color="Secondary",
+                font_style="Caption", size_hint_y=None, height="20dp"))
+            row.add_widget(img)
+            row.add_widget(texts)
+            row.on_release = lambda *_, nv=n, t=title: self.library_menu(nv, t)
+            self.library_list.add_widget(row)
 
     # ---------- library actions ----------
 
-    def library_menu(self, novel):
+    def library_menu(self, novel, title=None):
         # Tap a library row -> actions. Phase 3 adds "Read" here.
         slug = novel["slug"]
         dialog = MDDialog(
-            title=novel["title"],
+            title=title or novel["title"],
             buttons=[
                 MDFlatButton(text="Delete",
                              on_release=lambda *_: self._delete(slug, dialog)),
@@ -115,7 +143,8 @@ class HomeTab(MDScreen):
         dialog.dismiss()
         try:
             shutil.rmtree(os.path.join("novels", slug))  # relative -> chdir-safe
-            progress.flush()   # persist the now-stale progress state changes
+            progress.remove(slug)   # drop stale read marks for this novel
+            progress.flush()
         except Exception:
             self._notify("Delete failed.")
             return

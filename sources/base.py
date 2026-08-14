@@ -3,6 +3,8 @@ from typing import Any, Optional
 
 
 class Source(ABC):
+    search_supported: bool = True
+
     @property
     @abstractmethod
     def name(self) -> str:

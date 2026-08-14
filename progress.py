@@ -43,6 +43,13 @@ class ProgressTracker:
             entry = self._data.get(slug)
             return set(entry["seen"]) if entry else set()
 
+    def remove(self, slug):
+        """Forget a novel entirely (e.g. when its folder is deleted)."""
+        with self._lock:
+            if slug in self._data:
+                del self._data[slug]
+                self._dirty = True
+
     def flush(self):
         with self._lock:
             if not self._dirty:

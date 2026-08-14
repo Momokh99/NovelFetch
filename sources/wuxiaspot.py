@@ -13,6 +13,8 @@ headers = {
 
 
 class WuxiaSpotSource(Source):
+    search_supported = False
+
     def __init__(self):
         self._client = httpx.AsyncClient(
             headers=headers,
@@ -106,12 +108,9 @@ class WuxiaSpotSource(Source):
         }
 
     async def fetch_url(self, url: str, params: Optional[dict] = None):
-        try:
-            response = await self._client.get(url, params=params)
-            response.raise_for_status()
-            return BeautifulSoup(response.text, "html.parser")
-        except Exception:
-            return BeautifulSoup("", "html.parser")
+        response = await self._client.get(url, params=params)
+        response.raise_for_status()
+        return BeautifulSoup(response.text, "html.parser")
 
     def parse_slug(self, url: str) -> Optional[str]:
         o = urllib.parse.urlparse(url)

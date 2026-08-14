@@ -22,11 +22,13 @@ class MainScreen(BoxLayout):
         super().__init__(orientation="vertical", **kwargs)
 
         self.manager = ScreenManager()
+        self._previous = "tabs"   # screen to return to via back()
 
         tabs = Screen(name="tabs")
         self.nav = MDBottomNavigation()
+        self.home_tab = HomeTab()
         self.nav.add_widget(MDBottomNavigationItem(
-            HomeTab(), name="home", text="Home", icon="home"))
+            self.home_tab, name="home", text="Home", icon="home"))
         self.nav.add_widget(MDBottomNavigationItem(
             SearchTab(), name="search", text="Search", icon="magnify"))
         self.nav.add_widget(MDBottomNavigationItem(
@@ -41,8 +43,20 @@ class MainScreen(BoxLayout):
 
     def goto(self, name, **kwargs):
         """Switch to a screen by name, handing it data via load(**kwargs)."""
+        if self.manager.current != name:
+            self._previous = self.manager.current
+            if name == "tabs":
+                # Returning Home: re-scan so downloads/deletes show immediately.
+                self.home_tab.refresh_library()
         screen = self.manager.get_screen(name)
         if hasattr(screen, "load"):
             screen.load(**kwargs)
         self.manager.current = name
 
+    def back(self):
+        """Pop back to the screen we came from (no reload, keeps scroll)."""
+        self.manager.current = self._previous or "tabs"
+
+    def homescreen_library_refresh(self):
+        """Called after downloads so the Home tab's library repopulates."""
+        self.home_tab.refresh_library()

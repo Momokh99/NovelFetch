@@ -48,5 +48,8 @@ class NovelFetchApp(MDApp):
     def goto(self, name, **kwargs):
         self.root.goto(name, **kwargs)
 
+    def back(self):
+        self.root.back()
+
 if __name__ == "__main__":
     NovelFetchApp().run()
