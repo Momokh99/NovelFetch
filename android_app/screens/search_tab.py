@@ -163,6 +163,8 @@ class SearchTab(MDScreen):
             font_style="Caption", size_hint_y=None, height="20dp"))
         row.add_widget(img)
         row.add_widget(texts)
+        row.add_widget(utils._add_to_library_icon(
+            novel, MDApp.get_running_app().current_source))
         row.on_release = lambda n=novel: self._open(n)
         return row
 

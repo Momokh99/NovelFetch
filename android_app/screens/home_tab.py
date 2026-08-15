@@ -59,10 +59,13 @@ class HomeTab(MDScreen):
             meta = utils._read_meta(n["slug"])   # {"title", "cover", "chapters"} or {}
             title = meta.get("title") or n["title"]
             last = progress.get_last(n["slug"])    # stored chapter index or None
-            count = meta.get("chapters") or n["count"]
-            sub = f"{count} chapters"
-            if last is not None:
-                sub += f" · Last: Ch. {last + 1}"  # +1: index -> human number
+            if meta.get("tracked") and not utils._has_chapters(n["slug"]):
+                sub = "Tracked · download to start"
+            else:
+                count = meta.get("chapters") or n["count"]
+                sub = f"{count} chapters"
+                if last is not None:
+                    sub += f" · Last: Ch. {last + 1}"  # +1: index -> human number
 
             row = _TapCard(
                 orientation="horizontal",
@@ -94,20 +97,34 @@ class HomeTab(MDScreen):
     # ---------- library actions ----------
 
     def library_menu(self, novel, title=None):
-        # Tap a library row -> actions. Phase 3 adds "Read" here.
+        # Tap a library row -> actions. Tracked-only novels (no chapters yet)
+        # offer Download instead of Read/Export; downloaded ones keep the
+        # full set of actions.
         slug = novel["slug"]
-        dialog = MDDialog(
-            title=title or novel["title"],
-            buttons=[
+        dialog = MDDialog(title=title or novel["title"])
+        if utils._has_chapters(slug):
+            dialog.buttons = [
                 MDFlatButton(text="Read",
                              on_release=lambda *_: self._read(slug, dialog)),
                 MDFlatButton(text="Delete",
                              on_release=lambda *_: self._delete(slug, dialog)),
                 MDFlatButton(text="Export EPUB",
                              on_release=lambda *_: self._export(slug, dialog)),
-            ],
-        )
+            ]
+        else:
+            dialog.buttons = [
+                MDFlatButton(text="Download",
+                             on_release=lambda *_: self._download(slug, title, dialog)),
+                MDFlatButton(text="Remove",
+                             on_release=lambda *_: self._delete(slug, dialog)),
+            ]
         dialog.open()
+
+    def _download(self, slug, title, dialog):
+        dialog.dismiss()
+        source = utils._get_source(slug)       # tracked novel: fetch online chapters
+        raw_slug = slug.split(":", 1)[-1] if ":" in slug else slug
+        utils._open_chapters_for({"slug": raw_slug, "title": title or slug}, source)
 
     def _read(self, slug, dialog):
         dialog.dismiss()

@@ -75,6 +75,7 @@ class NovelListScreen(MDScreen):
             font_style="Caption", size_hint_y=None, height="20dp"))
         row.add_widget(img)
         row.add_widget(texts)
+        row.add_widget(utils._add_to_library_icon(novel, self.source))
         row.on_release = lambda: self._open(novel)   # closure: one novel per row
         return row
 

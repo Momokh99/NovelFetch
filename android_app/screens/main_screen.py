@@ -1,3 +1,4 @@
+from kivy.core.window import Window
 from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.screenmanager import Screen, ScreenManager
 from kivymd.app import MDApp
@@ -20,7 +21,7 @@ class MainScreen(BoxLayout):
         super().__init__(orientation="vertical", **kwargs)
 
         self.manager = ScreenManager()
-        self._previous = "tabs"   # screen to return to via back()
+        self._stack: list[str] = []   # navigation history; back() pops it
 
         tabs = Screen(name="tabs")
         self.nav = MDBottomNavigation()
@@ -39,15 +40,28 @@ class MainScreen(BoxLayout):
         self.manager.add_widget(ReaderScreen(name="reader"))
         self.manager.add_widget(DownloadProgressScreen(name="download_progress"))
 
+        # Refresh Home whenever the user switches to it in the bottom nav.
+        self.nav.bind(on_switch_tabs=self._on_switch_tabs)
+        # Android hardware back button (keycode 27) = ESC elsewhere.
+        Window.bind(on_keyboard=self._on_key)
+
         self.add_widget(self.manager)
+
+    def _on_switch_tabs(self, nav, name_tab):
+        if name_tab == "home":
+            self.home_tab.refresh_library()
+
+    def _on_key(self, window, key, scancode, codepoint, modifier):
+        if key == 27:  # ESC / Android back
+            if self.manager.current != "tabs":
+                self.back()
+                return True   # consumed: stay in the app
+            return False      # on tabs: let the default pause/exit run
 
     def goto(self, name, **kwargs):
         """Switch to a screen by name, handing it data via load(**kwargs)."""
         if self.manager.current != name:
-            self._previous = self.manager.current
-            if name == "tabs":
-                # Returning Home: re-scan so downloads/deletes show immediately.
-                self.home_tab.refresh_library()
+            self._stack.append(self.manager.current)
         screen = self.manager.get_screen(name)
         if hasattr(screen, "load"):
             screen.load(**kwargs)
@@ -55,7 +69,11 @@ class MainScreen(BoxLayout):
 
     def back(self):
         """Pop back to the screen we came from (no reload, keeps scroll)."""
-        self.manager.current = self._previous or "tabs"
+        target = self._stack.pop() if self._stack else "tabs"
+        if target == "tabs":
+            # Returning Home: re-scan so progress/downloads show immediately.
+            self.home_tab.refresh_library()
+        self.manager.current = target
 
     def homescreen_library_refresh(self):
         """Called after downloads so the Home tab's library repopulates."""

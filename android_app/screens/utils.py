@@ -4,6 +4,7 @@ import json
 import os
 
 from kivymd.app import MDApp
+from kivymd.uix.button import MDIconButton
 from kivymd.uix.label import MDLabel
 from kivymd.uix.snackbar import MDSnackbar
 
@@ -43,6 +44,86 @@ def _read_meta(slug):
             return json.load(f)
     except (OSError, ValueError):
         return {}
+
+
+def _has_chapters(slug):
+    """True if any downloaded chapter .txt exists under novels/{slug}."""
+    path = os.path.join("novels", slug)
+    if not os.path.isdir(path):
+        return False
+    return any(name.endswith(".txt") for name in os.listdir(path))
+
+
+async def _track_novel(source, novel):
+    """Register a novel in the library without downloading chapters.
+
+    Writes novels/{qualified}/meta.json with title, cover, source, and the
+    tracked flag. chapters starts at 0 and is only written later by a real
+    download, so 'Add' stays instant even for slow sources. Returns the
+    qualified slug."""
+    qualified = source.qualify_slug(novel["slug"])
+    cover = await _save_cover(source, qualified)
+    meta = {
+        "title": novel.get("title") or novel["slug"],
+        "cover": cover,
+        "chapters": 0,
+        "source": source.name,
+        "tracked": True,
+    }
+    try:
+        os.makedirs(os.path.join("novels", qualified), exist_ok=True)
+        with open(os.path.join("novels", qualified, "meta.json"), "w") as f:
+            json.dump(meta, f)
+    except OSError:
+        raise
+    return qualified
+
+
+def _add_to_library_icon(novel, source):
+    """Bookmark-style quick-add button for a result row. Uses a bookmark icon
+    when the novel is already registered in the library."""
+    qualified = ""
+    if source is not None:
+        qualified = source.qualify_slug(novel["slug"])
+    registered = bool(qualified and _read_meta(qualified))
+
+    btn = MDIconButton(
+        icon="bookmark" if registered else "bookmark-plus-outline",
+        size_hint=(None, 1),
+        on_release=lambda *_: _add_flow(btn, novel, source),
+    )
+    if registered:
+        btn.disabled = True
+    return btn
+
+
+def _add_flow(btn, novel, source):
+    """Add-to-library tap handler. Disables the button while the async save
+    runs, then swaps the icon and refreshes the Home library list."""
+    if source is None:
+        _snack("No source for this novel.")
+        return
+    qualified = source.qualify_slug(novel["slug"])
+    if _read_meta(qualified):
+        _snack("Already in your library.")
+        return
+
+    async def coro():
+        return await _track_novel(source, novel)
+
+    def on_done(result, error):
+        btn.disabled = False
+        if error is not None:
+            _snack("Could not add. Check your connection.")
+            return
+        btn.icon = "bookmark"
+        _snack("Added to library.")
+        root = MDApp.get_running_app().root
+        if hasattr(root, "homescreen_library_refresh"):
+            root.homescreen_library_refresh()
+
+    btn.disabled = True
+    async_loop.run(coro(), on_done)
 
 
 async def _save_cover(source, qualified_slug):

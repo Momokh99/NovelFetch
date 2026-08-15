@@ -103,6 +103,8 @@ class SettingsTab(MDScreen):
 
     def _toggle_theme(self):
         app = MDApp.get_running_app()
+        if self.theme_switch.active == (app.theme_cls.theme_style == "Dark"):
+            return  # programmatic sync from _refresh(), not a user toggle
         app.theme_cls.theme_style = "Dark" if self.theme_switch.active else "Light"
         self._notify("Dark theme" if self.theme_switch.active else "Light theme")
 
