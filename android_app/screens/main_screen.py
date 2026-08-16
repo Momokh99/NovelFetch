@@ -47,7 +47,8 @@ class MainScreen(BoxLayout):
 
         self.add_widget(self.manager)
 
-    def _on_switch_tabs(self, nav, name_tab):
+    def _on_switch_tabs(self, nav, item, name_tab):
+        # Kivy prepends the dispatcher instance, so args are (nav, item, name).
         if name_tab == "home":
             self.home_tab.refresh_library()
 

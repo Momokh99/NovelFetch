@@ -5,10 +5,10 @@ from kivymd.uix.label import MDLabel
 from kivymd.uix.progressbar import MDProgressBar
 from kivymd.uix.screen import MDScreen
 from kivymd.uix.snackbar import MDSnackbar
-from kivymd.uix.toolbar import MDTopAppBar
 
 from async_runner import async_loop
 from screens import utils
+from screens.topbar import TopBar
 
 
 class DownloadProgressScreen(MDScreen):
@@ -27,11 +27,7 @@ class DownloadProgressScreen(MDScreen):
         self._total = 0
         self._done = False
 
-        self.topbar = MDTopAppBar(
-            title="Downloading…",
-            left_action_items=[["arrow-left", lambda *_: self._back()]],
-        )
-        self.add_widget(self.topbar)
+        self.topbar = TopBar(title="Downloading…", back=True, on_back=self._back)
 
         box = MDBoxLayout(
             orientation="vertical",
@@ -48,7 +44,10 @@ class DownloadProgressScreen(MDScreen):
         box.add_widget(self.title_label)
         box.add_widget(self.progress_bar)
         box.add_widget(self.status_label)
-        self.add_widget(box)
+        root = MDBoxLayout(orientation="vertical")
+        root.add_widget(self.topbar)
+        root.add_widget(box)
+        self.add_widget(root)
 
     def load(self, chapters=None, slug="", source=None, title="", total=None, **kwargs):
         self.chapters = chapters or []
@@ -56,7 +55,7 @@ class DownloadProgressScreen(MDScreen):
         self.source = source
         self._title = title or "Downloading…"
         self._total = total or len(self.chapters)
-        self.topbar.title = self._title
+        self.topbar.set_title(self._title)
         self.title_label.text = self._title
         self.progress_bar.max = max(len(self.chapters), 1)
         self.progress_bar.value = 0

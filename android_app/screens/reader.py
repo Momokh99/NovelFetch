@@ -12,31 +12,12 @@ from kivymd.uix.label import MDLabel
 from kivymd.uix.list import MDList, OneLineListItem
 from kivymd.uix.screen import MDScreen
 from kivymd.uix.snackbar import MDSnackbar
-from kivymd.uix.toolbar import MDTopAppBar
 
 from progress import LANGUAGES, progress
 from async_runner import async_loop
+from screens import utils
+from screens.topbar import TopBar
 from translation import _translate_text
-
-
-def _chapter_sort_key(fname):
-    import re
-    nums = re.findall(r"\d+", fname)
-    return int(nums[0]) if nums else 0
-
-
-def _local_chapters(slug):
-    """Build a chapter list from the downloaded novels/{slug}/*.txt files."""
-    chap_dir = os.path.join("novels", slug)
-    if not os.path.isdir(chap_dir):
-        return []
-    files = [f for f in os.listdir(chap_dir) if f.endswith(".txt")]
-    files.sort(key=_chapter_sort_key)
-    chapters = []
-    for i, f in enumerate(files, 1):
-        title = os.path.basename(f).replace(".txt", "").replace("_", " ").title()
-        chapters.append({"num": i, "title": title, "url": ""})
-    return chapters
 
 
 class ReaderScreen(MDScreen):
@@ -57,12 +38,8 @@ class ReaderScreen(MDScreen):
         self._busy = False
         self._lang_dialog = None
 
-        self.topbar = MDTopAppBar(
-            title="Reader",
-            left_action_items=[["arrow-left", lambda *_: self._back()]],
-            right_action_items=self._toolbar_actions(),
-        )
-        self.add_widget(self.topbar)
+        self.header = TopBar(back=True, on_back=self._back)
+        self.title_label = self.header.title_label
 
         self.scroll = ScrollView()
         self.body_label = MDLabel(
@@ -74,44 +51,68 @@ class ReaderScreen(MDScreen):
         )
         self.body_label.bind(width=lambda *_: self._reflow())
         self.scroll.add_widget(self.body_label)
-        self.add_widget(self.scroll)
-
-        self.prev_btn = MDIconButton(icon="skip-previous", on_release=lambda *_: self._prev())
-        self.next_btn = MDIconButton(icon="skip-next", on_release=lambda *_: self._next())
-        self.counter = MDLabel(text="", halign="center", theme_text_color="Secondary")
 
         bottom = MDBoxLayout(
             orientation="horizontal",
             size_hint_y=None, height="56dp",
-            padding="8dp", spacing="8dp",
+            padding="8dp", spacing="4dp",
+        )
+        self.prev_btn = MDIconButton(icon="skip-previous", on_release=lambda *_: self._prev())
+        self.next_btn = MDIconButton(icon="skip-next", on_release=lambda *_: self._next())
+        self.font_down_btn = MDIconButton(
+            icon="format-font-size-decrease", on_release=lambda *_: self._font(-2))
+        self.font_up_btn = MDIconButton(
+            icon="format-font-size-increase", on_release=lambda *_: self._font(2))
+        self.translate_btn = MDIconButton(
+            icon="translate", on_release=lambda *_: self._toggle_translate())
+        self.font_size_label = MDLabel(
+            text=str(self._font_size),
+            halign="center", valign="middle",
+            theme_text_color="Secondary",
+            font_style="Caption",
+        )
+        self.counter = MDLabel(
+            text="",
+            halign="center", valign="middle",
+            bold=True,
+            font_style="Caption",
+            theme_text_color="Secondary",
         )
         bottom.add_widget(self.prev_btn)
+        bottom.add_widget(self.font_down_btn)
+        bottom.add_widget(self.font_size_label)
+        bottom.add_widget(self.font_up_btn)
+        bottom.add_widget(self.translate_btn)
         bottom.add_widget(self.counter)
         bottom.add_widget(self.next_btn)
-        self.add_widget(bottom)
 
-    # ---------- toolbar ----------
+        self.bottom_bar = bottom
+        self.bottom_divider = MDBoxLayout(
+            size_hint_y=None, height="1dp",
+            md_bg_color=[0.5, 0.5, 0.5, 0.35],
+        )
 
-    def _toolbar_actions(self):
-        items = [
-            ["format-font-size-decrease", lambda *_: self._font(-2)],
-            ["format-font-size-increase", lambda *_: self._font(2)],
-        ]
+        root = MDBoxLayout(orientation="vertical")
+        root.add_widget(self.header)
+        root.add_widget(self.scroll)
+        root.add_widget(self.bottom_divider)
+        root.add_widget(self.bottom_bar)
+        self.add_widget(root)
+
+    # ---------- translate toggle ----------
+
+    def _toggle_translate(self):
         if self._translated_text:
-            items.insert(0, ["undo-variant", lambda *_: self._revert()])
+            self._revert()
         else:
-            items.insert(0, ["translate", lambda *_: self._pick_language()])
-        return items
-
-    def _refresh_toolbar(self):
-        self.topbar.right_action_items = self._toolbar_actions()
+            self._pick_language()
 
     # ---------- goto() contract ----------
 
     def load(self, chapters=None, slug="", source=None, title="Reader", start=0, **kwargs):
         self.slug = slug
         self.source = source
-        self.chapters = chapters if chapters is not None else _local_chapters(slug)
+        self.chapters = chapters if chapters is not None else utils._local_chapters(slug)
         if not self.chapters:
             self._notify("No chapters to read.")
             Clock.schedule_once(lambda dt: MDApp.get_running_app().back(), 0.3)
@@ -128,9 +129,9 @@ class ReaderScreen(MDScreen):
         self._original_text = ""
         self._translated_text = ""
         self._lang = None
-        self._refresh_toolbar()
+        self.translate_btn.icon = "translate"
         self._set_busy(True)
-        self.topbar.title = self.chapters[idx]["title"]
+        self.title_label.text = self.chapters[idx]["title"]
         self.counter.text = f"{idx + 1}/{len(self.chapters)}"
 
         ch = self.chapters[idx]
@@ -227,6 +228,7 @@ class ReaderScreen(MDScreen):
             return
         self._translated_text = translated
         self._lang = code
+        self.translate_btn.icon = "undo-variant"
         self.body_label.text = translated
         if code == "ar":
             self.body_label.halign = "right"
@@ -234,7 +236,6 @@ class ReaderScreen(MDScreen):
         else:
             self.body_label.halign = "left"
             self.body_label.text_language = ""
-        self._refresh_toolbar()
         self.scroll.scroll_y = 1
         Clock.schedule_once(lambda dt: self._reflow(), 0)
 
@@ -243,14 +244,15 @@ class ReaderScreen(MDScreen):
             return
         self._translated_text = ""
         self._lang = None
+        self.translate_btn.icon = "translate"
         self._show_text(self._original_text)
-        self._refresh_toolbar()
 
     # ---------- font size ----------
 
     def _font(self, delta):
         self._font_size = min(28, max(14, self._font_size + delta))
         self.body_label.font_size = self._font_size
+        self.font_size_label.text = str(self._font_size)
         Clock.schedule_once(lambda dt: self._reflow(), 0)
 
     # ---------- misc ----------

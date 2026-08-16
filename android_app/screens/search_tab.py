@@ -11,12 +11,12 @@ from kivymd.uix.list import MDList
 from kivymd.uix.screen import MDScreen
 from kivymd.uix.snackbar import MDSnackbar
 from kivymd.uix.textfield import MDTextField
-from kivymd.uix.toolbar import MDTopAppBar
 
 from async_runner import async_loop
 from screens import utils
 from screens.browse import BrowseSection
 from screens.novel_list import _TapCard
+from screens.topbar import TopBar
 
 
 class SearchTab(MDScreen):
@@ -29,8 +29,7 @@ class SearchTab(MDScreen):
         self._debounce = None
         self._clearing = False
 
-        self.topbar = MDTopAppBar(title="Search")
-        self.add_widget(self.topbar)
+        self.topbar = TopBar(title="Search")
 
         body = ScrollView()
         content = MDBoxLayout(orientation="vertical", adaptive_height=True,
@@ -68,7 +67,10 @@ class SearchTab(MDScreen):
         content.add_widget(self.results_box)
 
         body.add_widget(content)
-        self.add_widget(body)
+        root = MDBoxLayout(orientation="vertical")
+        root.add_widget(self.topbar)
+        root.add_widget(body)
+        self.add_widget(root)
 
     # ---------- search ----------
 
@@ -145,12 +147,14 @@ class SearchTab(MDScreen):
         )
         cover = novel.get("cover", "") or ""
         img = AsyncImage(
-            source=cover,               # loads http cover off-thread
+            source="",               # set via httpx cache (see set_image_url)
             size_hint=(None, 1),
             width=dp(70),
             keep_ratio=True,
             allow_stretch=True,
         )
+        if cover:
+            utils.set_image_url(img, cover)
         texts = MDBoxLayout(orientation="vertical", size_hint_y=1, spacing="2dp")
         texts.add_widget(MDLabel(
             text=novel["title"], bold=True,

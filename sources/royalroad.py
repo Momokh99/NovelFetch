@@ -84,6 +84,12 @@ class RoyalRoadSource(Source):
     def qualify_slug(self, slug: str) -> str:
         return f"royalroad:{slug}"
 
+    @staticmethod
+    def _absolutize(url: str) -> str:
+        if url.startswith("/"):
+            return "https://www.royalroad.com" + url
+        return url
+
     def extract_novel_rows(self, soup) -> list[dict]:
         results = []
         rows = soup.select(".fiction-list-item.row")
@@ -95,6 +101,7 @@ class RoyalRoadSource(Source):
             slug = self.parse_slug("https://www.royalroad.com" + href)
             img_tag = row.select_one('img[data-type="cover"]')
             cover = img_tag["src"] if img_tag else ""
+            cover = self._absolutize(cover)
             results.append({
                 "title": title_tag.text.strip(),
                 "author": "Unknown",
@@ -163,7 +170,9 @@ class RoyalRoadSource(Source):
         url = f"https://www.royalroad.com/fiction/{slug}"
         soup = await self.fetch_url(url)
         img = soup.find("img", class_="thumbnail")
-        return str(img["src"]) if img else ""
+        if img:
+            return self._absolutize(str(img["src"]))
+        return ""
 
     async def browse_genre(self, genre_slug: str) -> list[dict]:
         url = f"https://www.royalroad.com/fictions/search?tagsAdd={genre_slug}&globalFilters=true"

@@ -9,9 +9,9 @@ from kivymd.uix.card import MDCard
 from kivymd.uix.label import MDLabel
 from kivymd.uix.list import MDList
 from kivymd.uix.screen import MDScreen
-from kivymd.uix.toolbar import MDTopAppBar
 
 from screens import utils
+from screens.topbar import TopBar
 
 
 class _TapCard(MDCard, ButtonBehavior):
@@ -27,22 +27,21 @@ class NovelListScreen(MDScreen):
         self.novels = []
         self.source = None
 
-        self.topbar = MDTopAppBar(
-            title="Results",
-            left_action_items=[["arrow-left", lambda *_: self._back()]],
-        )
-        self.add_widget(self.topbar)
+        self.topbar = TopBar(title="Results", back=True, on_back=self._back)
 
         body = ScrollView()
         self.list_view = MDList()
         body.add_widget(self.list_view)
-        self.add_widget(body)
+        root = MDBoxLayout(orientation="vertical")
+        root.add_widget(self.topbar)
+        root.add_widget(body)
+        self.add_widget(root)
 
     def load(self, novels, source=None, title="Results"):
         # Populated fresh on every goto("novel_list", ...) call.
         self.novels = novels
         self.source = source
-        self.topbar.title = f"{title} ({len(novels)})" if novels else title
+        self.topbar.set_title(f"{title} ({len(novels)})" if novels else title)
         self.list_view.clear_widgets()
         for n in novels:
             self.list_view.add_widget(self._make_row(n))
@@ -57,12 +56,14 @@ class NovelListScreen(MDScreen):
         )
         cover = novel.get("cover", "") or ""
         img = AsyncImage(
-            source=cover,               # loads http cover off-thread
+            source="",               # set via httpx cache (see set_image_url)
             size_hint=(None, 1),
             width=dp(70),
             keep_ratio=True,
             allow_stretch=True,
         )
+        if cover:
+            utils.set_image_url(img, cover)
         texts = MDBoxLayout(orientation="vertical", size_hint_y=1, spacing="2dp")
         texts.add_widget(MDLabel(
             text=novel["title"], bold=True,

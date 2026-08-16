@@ -17,6 +17,12 @@ class ScribbleHubSource(Source):
     def blocked(self) -> bool:
         return self._blocked
 
+    @staticmethod
+    def _absolutize(url: str) -> str:
+        if url.startswith("/"):
+            return "https://www.scribblehub.com" + url
+        return url
+
     async def _fetch(self, url: str, data: Optional[dict] = None):
         # curl_cffi is a compiled AAPI extension that python-for-android cannot
         # cross-build reliably. Import lazily so the module (and the whole app)
@@ -134,6 +140,7 @@ class ScribbleHubSource(Source):
             slug = self.parse_slug(href)
             img_tag = row.select_one(".search_img img")
             cover = img_tag.get("src", "") if img_tag else ""
+            cover = self._absolutize(cover)
             author_tag = row.select_one(".search_stats span[title='Author'] .a_un_st a")
             author = author_tag.text.strip() if author_tag else "Unknown"
             results.append({
@@ -181,7 +188,7 @@ class ScribbleHubSource(Source):
         img = soup.select_one(".fic_image img")
         if img:
             src = img.get("data-src") or img.get("src") or ""
-            return str(src)
+            return self._absolutize(str(src))
         return ""
 
     async def browse_genre(self, genre_slug: str) -> list[dict]:

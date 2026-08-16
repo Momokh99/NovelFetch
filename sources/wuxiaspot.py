@@ -125,6 +125,12 @@ class WuxiaSpotSource(Source):
     def qualify_slug(self, slug: str) -> str:
         return f"wuxiaspot:{slug}"
 
+    @staticmethod
+    def _absolutize(url: str) -> str:
+        if url.startswith("/"):
+            return "https://www.wuxiaspot.com" + url
+        return url
+
     def extract_novel_rows(self, soup) -> list[dict]:
         results = []
         items = soup.select(".novel-item")
@@ -138,6 +144,7 @@ class WuxiaSpotSource(Source):
             title = title_el.text.strip() if title_el else ""
             img = item.select_one(".novel-cover img.lazy")
             cover = img.get("data-src", "") if img else ""
+            cover = self._absolutize(cover)
             if slug:
                 self._cover_cache[slug] = cover
             results.append({
@@ -280,8 +287,9 @@ class WuxiaSpotSource(Source):
             img = soup.select_one(".cover img.lazy")
             if img:
                 src = img.get("data-src") or img.get("src") or ""
-                self._cover_cache[slug] = str(src)
-                return str(src)
+                src = self._absolutize(str(src))
+                self._cover_cache[slug] = src
+                return src
         except Exception:
             pass
         return ""

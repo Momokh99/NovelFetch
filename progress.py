@@ -68,13 +68,12 @@ def _scan_library():
     if not os.path.isdir(novels_dir):
         return []
     result = []
-    for slug in sorted(os.listdir(novels_dir)):
-        chap_dir = os.path.join(novels_dir, slug)
-        if os.path.isdir(chap_dir):
-            count = 0
-            for root, dirs, files in os.walk(chap_dir):
-                count += len(files)
-            result.append({"slug": slug, "title": _slug_to_title(slug), "count": count})
+    for root, dirs, files in os.walk(novels_dir):
+        if "meta.json" not in files:
+            continue
+        rel = os.path.relpath(root, novels_dir).replace(os.sep, "/")
+        result.append({"slug": rel, "title": _slug_to_title(rel), "count": len(files)})
+    result.sort(key=lambda n: n["slug"])
     return result
 
 LANGUAGES = {

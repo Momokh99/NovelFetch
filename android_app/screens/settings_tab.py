@@ -13,10 +13,10 @@ from kivymd.uix.list import MDList, OneLineAvatarIconListItem, IconLeftWidget
 from kivymd.uix.screen import MDScreen
 from kivymd.uix.selectioncontrol import MDSwitch
 from kivymd.uix.snackbar import MDSnackbar
-from kivymd.uix.toolbar import MDTopAppBar
 
 from progress import progress, _scan_library
 from sources import REGISTRY
+from screens.topbar import TopBar
 
 PALETTES = [
     "Red", "Pink", "Purple", "DeepPurple", "Indigo", "Blue", "LightBlue",
@@ -33,8 +33,7 @@ class SettingsTab(MDScreen):
         self._palette_dialog = None
         self._clear_dialog = None
 
-        self.topbar = MDTopAppBar(title="Settings")
-        self.add_widget(self.topbar)
+        self.topbar = TopBar(title="Settings")
 
         body = ScrollView()
         content = MDBoxLayout(orientation="vertical", adaptive_height=True,
@@ -81,7 +80,10 @@ class SettingsTab(MDScreen):
             adaptive_height=True))
 
         body.add_widget(content)
-        self.add_widget(body)
+        root = MDBoxLayout(orientation="vertical")
+        root.add_widget(self.topbar)
+        root.add_widget(body)
+        self.add_widget(root)
 
         # theme_style is set in App.build(), AFTER this tab is constructed;
         # a zero-delay callback runs on the first frame, after on_start.

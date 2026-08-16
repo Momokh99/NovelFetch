@@ -1,4 +1,6 @@
 from sources import REGISTRY
+import re
+import shutil
 import time
 import json
 import os
@@ -14,6 +16,33 @@ from async_runner import async_loop
 def _snack(text):
     """KivyMD 1.2.0 MDSnackbar takes child widgets, not a text kwarg."""
     MDSnackbar(MDLabel(text=text)).open()
+
+
+def _chapter_sort_key(fname):
+    nums = re.findall(r"\d+", fname)
+    return int(nums[0]) if nums else 0
+
+
+def _local_chapters(slug):
+    """Build a chapter list from the downloaded novels/{slug}/*.txt files."""
+    chap_dir = os.path.join("novels", slug)
+    if not os.path.isdir(chap_dir):
+        return []
+    files = [f for f in os.listdir(chap_dir) if f.endswith(".txt")]
+    files.sort(key=_chapter_sort_key)
+    chapters = []
+    for i, f in enumerate(files, 1):
+        title = os.path.basename(f).replace(".txt", "").replace("_", " ").title()
+        chapters.append({"num": i, "title": title, "url": ""})
+    return chapters
+
+
+def _delete_library(slug):
+    """Remove a novel's folder and its reading progress entirely."""
+    from progress import progress
+    shutil.rmtree(os.path.join("novels", slug), ignore_errors=True)
+    progress.remove(slug)
+    progress.flush()
 
 
 def _get_source(slug):
@@ -150,6 +179,73 @@ async def _save_cover(source, qualified_slug):
         return ""
 
 
+_COVER_CACHE_DIR = os.path.join("novels", ".covers")
+
+
+def _cover_cache_path(url):
+    """Deterministic local path for a remote cover URL (no network here)."""
+    if not url:
+        return ""
+    import hashlib
+    digest = hashlib.md5(url.encode("utf-8")).hexdigest()
+    ext = url.split("?")[0].rsplit(".", 1)[-1].lower()
+    if ext not in ("jpg", "jpeg", "png", "webp"):
+        ext = "jpg"
+    return os.path.join(_COVER_CACHE_DIR, f"{digest}.{ext}")
+
+
+def _cached_cover(url):
+    """Local path if the cover is already cached, else ''."""
+    path = _cover_cache_path(url)
+    if path and os.path.exists(path):
+        return path
+    return ""
+
+
+async def _download_cover(url):
+    """httpx-download a remote cover into the shared cache dir (once)."""
+    path = _cover_cache_path(url)
+    if not path or (path and os.path.exists(path)):
+        return path
+    import httpx
+    try:
+        os.makedirs(_COVER_CACHE_DIR, exist_ok=True)
+        async with httpx.AsyncClient(follow_redirects=True, timeout=30) as client:
+            resp = await client.get(url)
+        if resp.status_code != 200:
+            return ""
+        tmp = path + ".tmp"
+        with open(tmp, "wb") as f:
+            f.write(resp.content)
+        os.replace(tmp, path)
+        return path
+    except Exception:
+        return ""
+
+
+def set_image_url(img, url):
+    """Point an AsyncImage at a cover URL, downloading to a local cache first.
+
+    Remote AsyncImage sources fail on Android (Kivy hardcodes a cafile path that
+    does not exist there), so covers are fetched via httpx into novels/.covers/
+    and the image is given the local path instead. Already-cached covers resolve
+    synchronously; otherwise the download happens on the async loop and the
+    source is swapped in when it lands."""
+    local = _cached_cover(url)
+    if local:
+        img.source = local
+        return
+
+    async def coro():
+        return await _download_cover(url)
+
+    def on_done(path, error):
+        if error is None and path:
+            img.source = path
+
+    async_loop.run(coro(), on_done)
+
+
 async def _download_novel(source, qualified_slug, chapters, title,
                           total=None, progress_cb=None):
     """Save every chapter via source.save_chapter, download the cover, and
@@ -189,9 +285,11 @@ async def _download_novel(source, qualified_slug, chapters, title,
     return saved, failed
 
 
-def _open_chapters_for(novel, source, set_loading=None):
+def _open_chapters_for(novel, source, set_loading=None, fallback=None):
     """Shared novel-tap flow: fetch chapters, then goto the chapter list.
-    set_loading(bool) optionally toggles a busy state on the caller's view."""
+    set_loading(bool) optionally toggles a busy state on the caller's view.
+    fallback: local chapters to show if the online fetch fails or is empty
+    (keeps downloaded novels openable offline)."""
     def _set(state):
         if set_loading:
             set_loading(state)
@@ -203,12 +301,16 @@ def _open_chapters_for(novel, source, set_loading=None):
 
     async def coro():
         cover = novel.get("cover", "") or ""
-        if not cover:
-            try:
+        chapters = None
+        try:
+            if not cover:
                 cover = await source.cover_url(novel["slug"])
-            except Exception:
-                cover = ""
-        return await _get_chapters(source, novel["slug"]), cover
+            chapters = await _get_chapters(source, novel["slug"])
+        except Exception:
+            pass
+        if not chapters and fallback:
+            chapters = fallback
+        return chapters, cover
 
     def on_done(result, error):
         _set(False)
