@@ -344,10 +344,12 @@ class ChapterListScreen(MDScreen):
             dialog.dismiss()
         confirm = MDDialog(
             title=f"Delete {self._novel_title}?",
+            text="The files will be removed but the novel stays tracked, so "
+                 "you can re-download it later from Updates.",
             buttons=[
                 MDFlatButton(text="Cancel", on_release=lambda *_: confirm.dismiss()),
                 MDFlatButton(text="Delete",
-                             on_release=lambda *_: self._do_delete_novel(confirm)),
+                             on_release=lambda *_: self._do_delete_novel(confirm, untrack=False)),
             ],
         )
         confirm.open()
@@ -358,17 +360,18 @@ class ChapterListScreen(MDScreen):
             dialog.dismiss()
         confirm = MDDialog(
             title=f"Remove {self._novel_title} from library?",
+            text="This removes the novel and its tracking entirely.",
             buttons=[
                 MDFlatButton(text="Cancel", on_release=lambda *_: confirm.dismiss()),
                 MDFlatButton(text="Remove",
-                             on_release=lambda *_: self._do_delete_novel(confirm)),
+                             on_release=lambda *_: self._do_delete_novel(confirm, untrack=True)),
             ],
         )
         confirm.open()
 
-    def _do_delete_novel(self, dialog):
+    def _do_delete_novel(self, dialog, untrack=False):
         dialog.dismiss()
-        utils._delete_library(self.slug)
+        utils._delete_library(self.slug, untrack=untrack)
         root = MDApp.get_running_app().root
         if hasattr(root, "homescreen_library_refresh"):
             root.homescreen_library_refresh()

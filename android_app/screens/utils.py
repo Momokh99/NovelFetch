@@ -37,11 +37,15 @@ def _local_chapters(slug):
     return chapters
 
 
-def _delete_library(slug):
-    """Remove a novel's folder and its reading progress entirely."""
+def _delete_library(slug, untrack=False):
+    """Remove a novel's files and its reading progress. Tracking survives by
+    default so the novel stays in the library (tracked-only) and can be
+    re-downloaded; pass untrack=True for a full removal."""
     from progress import progress
     shutil.rmtree(os.path.join("novels", slug), ignore_errors=True)
     progress.remove(slug)
+    if untrack:
+        progress.untrack(slug)
     progress.flush()
 
 
@@ -83,6 +87,28 @@ def _has_chapters(slug):
     return any(name.endswith(".txt") for name in os.listdir(path))
 
 
+def _is_tracked(slug):
+    """True if a slug is registered as tracked, via meta.json or the
+    tracking registry (which persists even after the folder is deleted)."""
+    from progress import progress
+    return bool(_read_meta(slug).get("tracked")) or progress.is_tracked(slug)
+
+
+def _library_entries():
+    """Every library novel: folders on disk plus tracked-but-deleted slugs.
+
+    Each entry: {slug, title, count, tracked} — tracked slugs whose files are
+    gone still show up so the reader can re-add/update them."""
+    from progress import _scan_library, progress
+    entries = _scan_library()
+    seen = {n["slug"] for n in entries}
+    for t in progress.tracked_novels():
+        if t["slug"] not in seen:
+            entries.append({"slug": t["slug"], "title": t["title"], "count": 0})
+    entries.sort(key=lambda n: n["slug"])
+    return entries
+
+
 async def _track_novel(source, novel):
     """Register a novel in the library without downloading chapters.
 
@@ -105,6 +131,11 @@ async def _track_novel(source, novel):
             json.dump(meta, f)
     except OSError:
         raise
+    # Tracking is also persisted in novels/tracking.json so it survives even
+    # if the novels/{qualified} folder is later deleted.
+    from progress import progress
+    progress.track(qualified, meta["title"])
+    progress.flush()
     return qualified
 
 

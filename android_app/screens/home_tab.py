@@ -69,13 +69,14 @@ class HomeTab(MDScreen):
     # ---------- library ----------
 
     def refresh_library(self):
-        # _scan_library() walks novels/ synchronously — cheap, thread-safe.
-        novels = _scan_library()
+        # _library_entries() walks novels/ synchronously — cheap, thread-safe —
+        # and includes tracked slugs whose files were deleted.
+        novels = utils._library_entries()
         self.library_list.clear_widgets()
 
         n_tracked = sum(
             1 for n in novels
-            if utils._read_meta(n["slug"]).get("tracked")
+            if utils._is_tracked(n["slug"])
             and not utils._has_chapters(n["slug"])
         )
         if novels:
@@ -95,7 +96,7 @@ class HomeTab(MDScreen):
             meta = utils._read_meta(slug)   # {"title", "cover", "chapters"} or {}
             title = meta.get("title") or n["title"]
             last = progress.get_last(slug)   # stored chapter index or None
-            tracked_only = bool(meta.get("tracked")) and not utils._has_chapters(slug)
+            tracked_only = utils._is_tracked(slug) and not utils._has_chapters(slug)
 
             if tracked_only:
                 sub = "Tracked · download to start"

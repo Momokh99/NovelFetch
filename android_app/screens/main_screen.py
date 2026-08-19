@@ -10,6 +10,8 @@ from kivymd.uix.bottomnavigation import (
 from screens.home_tab import HomeTab
 from screens.search_tab import SearchTab
 from screens.settings_tab import SettingsTab
+from screens.update import UpdateTab
+from screens.history import HistoryTab
 from screens.novel_list import NovelListScreen
 from screens.chapter_list import ChapterListScreen
 from screens.reader import ReaderScreen
@@ -26,10 +28,16 @@ class MainScreen(BoxLayout):
         tabs = Screen(name="tabs")
         self.nav = MDBottomNavigation()
         self.home_tab = HomeTab()
+        self.update_tab = UpdateTab()
+        self.history_tab = HistoryTab()
         self.nav.add_widget(MDBottomNavigationItem(
             self.home_tab, name="home", text="Home", icon="home"))
         self.nav.add_widget(MDBottomNavigationItem(
             SearchTab(), name="search", text="Search", icon="magnify"))
+        self.nav.add_widget(MDBottomNavigationItem(
+            self.update_tab, name="updates", text="Updates", icon="update"))
+        self.nav.add_widget(MDBottomNavigationItem(
+            self.history_tab, name="history", text="History", icon="history"))
         self.nav.add_widget(MDBottomNavigationItem(
             SettingsTab(), name="settings", text="Settings", icon="cog"))
         tabs.add_widget(self.nav)
@@ -51,6 +59,10 @@ class MainScreen(BoxLayout):
         # Kivy prepends the dispatcher instance, so args are (nav, item, name).
         if name_tab == "home":
             self.home_tab.refresh_library()
+        elif name_tab == "updates":
+            self.update_tab.refresh()
+        elif name_tab == "history":
+            self.history_tab.refresh()
 
     def _on_key(self, window, key, scancode, codepoint, modifier):
         if key == 27:  # ESC / Android back

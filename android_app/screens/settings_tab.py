@@ -151,6 +151,8 @@ class SettingsTab(MDScreen):
             except OSError:
                 pass
             progress.remove(slug)
+        for tracked in progress.tracked_novels():
+            progress.untrack(tracked["slug"])
         progress.flush()
         self._refresh()
         app = MDApp.get_running_app()
