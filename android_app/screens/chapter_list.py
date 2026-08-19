@@ -190,9 +190,9 @@ class ChapterListScreen(MDScreen):
         item._idx = i
         return item
 
-    def _on_scroll(self, scroll_y, *args):
+    def _on_scroll(self, instance, value):
         # Near the bottom: pull in the next chunk of chapter rows.
-        if float(scroll_y) < 0.05:
+        if float(value) < 0.05:
             self._load_more()
 
     def _load_more(self, *args):

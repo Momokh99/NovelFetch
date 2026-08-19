@@ -1,3 +1,4 @@
+from kivy.clock import Clock
 from kivy.metrics import dp
 from kivy.uix.scrollview import ScrollView
 
@@ -50,6 +51,9 @@ class UpdateTab(MDScreen):
         root.add_widget(self.topbar)
         root.add_widget(body)
         self.add_widget(root)
+
+        # Populate on first frame (after on_start sets up sources), like Home.
+        Clock.schedule_once(lambda dt: self.refresh(), 0)
 
     def load(self, **kwargs):
         self.refresh()
