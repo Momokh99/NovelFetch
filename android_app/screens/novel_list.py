@@ -1,17 +1,14 @@
 from kivy.metrics import dp
 from kivy.uix.behaviors import ButtonBehavior
 from kivy.uix.image import AsyncImage
-from kivy.uix.scrollview import ScrollView
 
 from kivymd.app import MDApp
 from kivymd.uix.boxlayout import MDBoxLayout
 from kivymd.uix.card import MDCard
 from kivymd.uix.label import MDLabel
-from kivymd.uix.list import MDList
 from kivymd.uix.screen import MDScreen
 
 from screens import utils, theme
-from screens.topbar import TopBar
 
 
 class _TapCard(MDCard, ButtonBehavior):
@@ -27,15 +24,8 @@ class NovelListScreen(MDScreen):
         self.novels = []
         self.source = None
 
-        self.topbar = TopBar(title="Results", back=True, on_back=self._back)
-
-        body = ScrollView()
-        self.list_view = MDList()
-        body.add_widget(self.list_view)
-        root = MDBoxLayout(orientation="vertical")
-        root.add_widget(self.topbar)
-        root.add_widget(body)
-        self.add_widget(root)
+        self.topbar = self.ids.topbar
+        self.list_view = self.ids.list_view
 
     def load(self, novels, source=None, title="Results"):
         # Populated fresh on every goto("novel_list", ...) call.
@@ -84,6 +74,3 @@ class NovelListScreen(MDScreen):
         source = self.source or utils._get_source(novel.get("slug", ""))
         utils._open_chapters_for(novel, source,
                                  set_loading=lambda s: setattr(self.list_view, "disabled", s))
-
-    def _back(self):
-        MDApp.get_running_app().back()

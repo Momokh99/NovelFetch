@@ -1,0 +1,31 @@
+<DownloadProgressScreen>:
+    MDBoxLayout:
+        orientation: "vertical"
+
+        TopBar:
+            id: topbar
+            title: "Downloading…"
+            back: True
+
+        MDBoxLayout:
+            orientation: "vertical"
+            padding: dp(16)
+            spacing: dp(8)
+            adaptive_height: True
+
+            MDLabel:
+                id: title_label
+                bold: True
+                font_style: "Subtitle1"
+                adaptive_height: True
+
+            MDProgressBar:
+                id: progress_bar
+                value: 0
+                max: 1
+
+            MDLabel:
+                id: status_label
+                text: ""
+                theme_text_color: "Secondary"
+                adaptive_height: True

@@ -2,13 +2,11 @@ import os
 
 from kivy.clock import Clock
 from kivy.metrics import dp
-from kivy.uix.scrollview import ScrollView
 
 from kivymd.app import MDApp
 from kivymd.uix.boxlayout import MDBoxLayout
 from kivymd.uix.fitimage import FitImage
 from kivymd.uix.label import MDIcon, MDLabel
-from kivymd.uix.list import MDList
 from kivymd.uix.progressbar import MDProgressBar
 from kivymd.uix.screen import MDScreen
 
@@ -17,51 +15,18 @@ from screens import utils                    # _get_source helper, meta
 from screens import theme
 from screens.novel_list import _TapCard
 from screens.source_picker import open_source_picker
-from screens.topbar import TopBar
 
 
 class HomeTab(MDScreen):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
 
-        self.topbar = TopBar(
-            title="NovelFetch",
-            actions=[("book-open-variant", open_source_picker)],
-        )
-
-        body = ScrollView(always_overscroll=False)
-        content = MDBoxLayout(orientation="vertical", adaptive_height=True,
-                              padding=theme.TAB_CONTENT_PAD, spacing=theme.SECTION_GAP)
-
-        content.add_widget(MDLabel(text="My Library", bold=True, adaptive_height=True))
-        self.library_count = MDLabel(
-            text="", theme_text_color="Secondary",
-            font_style="Caption", adaptive_height=True)
-        content.add_widget(self.library_count)
-
-        self.library_empty = MDBoxLayout(
-            orientation="vertical", adaptive_height=True,
-            padding="16dp", spacing="4dp")
-        self.library_empty.add_widget(MDIcon(
-            icon="bookshelf", halign="center", font_size="56dp",
-            theme_text_color="Secondary"))
-        self.library_empty.add_widget(MDLabel(
-            text="Your library is empty", halign="center",
-            bold=True, adaptive_height=True))
-        self.library_empty.add_widget(MDLabel(
-            text="Browse the hot list or search for novels\nto start reading.",
-            halign="center", theme_text_color="Secondary",
-            font_style="Caption", adaptive_height=True))
-        content.add_widget(self.library_empty)
-
-        self.library_list = MDList()
-        content.add_widget(self.library_list)
-
-        body.add_widget(content)
-        root = MDBoxLayout(orientation="vertical")
-        root.add_widget(self.topbar)
-        root.add_widget(body)
-        self.add_widget(root)
+        # Widget tree lives in kv/home_tab.kv; alias the runtime-touched nodes.
+        self.topbar = self.ids.topbar
+        self.topbar.set_actions([("book-open-variant", open_source_picker)])
+        self.library_count = self.ids.library_count
+        self.library_empty = self.ids.library_empty
+        self.library_list = self.ids.library_list
 
         # current_source is set in App.on_start(), AFTER build(). A zero-delay
         # Clock callback fires on the first frame — after on_start has run.
@@ -81,6 +46,7 @@ class HomeTab(MDScreen):
             and not utils._has_chapters(n["slug"])
         )
         if novels:
+            self.library_empty.adaptive_height = False
             self.library_empty.size_hint_y = None
             self.library_empty.height = 0
             self.library_empty.opacity = 0
@@ -91,6 +57,7 @@ class HomeTab(MDScreen):
             self.library_count.text = count_text
         else:
             self.library_empty.adaptive_height = True
+            self.library_empty.height = self.library_empty.minimum_height
             self.library_empty.opacity = 1
             self.library_empty.disabled = False
             self.library_count.text = ""

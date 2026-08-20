@@ -1,0 +1,24 @@
+<TopBar>:
+    orientation: "horizontal"
+    size_hint_y: None
+    height: dp(48)
+    padding: (dp(4), 0, dp(4), 0)
+    spacing: dp(4)
+
+    MDLabel:
+        id: title_label
+        text: root.title
+        font_style: "Subtitle2"
+        theme_text_color: "Secondary"
+        halign: "left"
+        valign: "middle"
+        size_hint_x: 1
+        shorten: True
+        shorten_from: "center"
+        max_lines: 1
+        text_size: self.width, None
+
+    MDBoxLayout:
+        id: actions_box
+        adaptive_width: True
+        spacing: dp(2)

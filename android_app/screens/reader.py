@@ -2,11 +2,8 @@ import asyncio
 import os
 
 from kivy.clock import Clock
-from kivy.uix.scrollview import ScrollView
 
 from kivymd.app import MDApp
-from kivymd.uix.boxlayout import MDBoxLayout
-from kivymd.uix.button import MDIconButton
 from kivymd.uix.dialog import MDDialog
 from kivymd.uix.label import MDLabel
 from kivymd.uix.list import MDList, OneLineListItem
@@ -16,7 +13,6 @@ from kivymd.uix.snackbar import MDSnackbar
 from progress import LANGUAGES, progress
 from async_runner import async_loop
 from screens import utils, theme
-from screens.topbar import TopBar
 from translation import _translate_text
 
 
@@ -38,66 +34,31 @@ class ReaderScreen(MDScreen):
         self._busy = False
         self._lang_dialog = None
 
-        self.header = TopBar(back=True, on_back=self._back)
-        self.title_label = self.header.title_label
+        self.header = self.ids.header
+        self.header.on_back = self._back
+        self.title_label = self.header.ids.title_label
 
-        self.scroll = ScrollView()
-        self.body_label = MDLabel(
-            text="",
-            size_hint_y=None,
-            adaptive_height=True,
-            padding=("16dp", "16dp"),
-            font_size=self._font_size,
-        )
+        self.scroll = self.ids.scroll
+        self.body_label = self.ids.body_label
+        self.body_label.font_size = self._font_size
         self.body_label.bind(width=lambda *_: self._reflow())
-        self.scroll.add_widget(self.body_label)
 
-        bottom = MDBoxLayout(
-            orientation="horizontal",
-            size_hint_y=None, height="56dp",
-            padding="8dp", spacing="4dp",
-        )
-        self.prev_btn = MDIconButton(icon="skip-previous", on_release=lambda *_: self._prev())
-        self.next_btn = MDIconButton(icon="skip-next", on_release=lambda *_: self._next())
-        self.font_down_btn = MDIconButton(
-            icon="format-font-size-decrease", on_release=lambda *_: self._font(-2))
-        self.font_up_btn = MDIconButton(
-            icon="format-font-size-increase", on_release=lambda *_: self._font(2))
-        self.translate_btn = MDIconButton(
-            icon="translate", on_release=lambda *_: self._toggle_translate())
-        self.font_size_label = MDLabel(
-            text=str(self._font_size),
-            halign="center", valign="middle",
-            theme_text_color="Secondary",
-            font_style="Caption",
-        )
-        self.counter = MDLabel(
-            text="",
-            halign="center", valign="middle",
-            bold=True,
-            font_style="Caption",
-            theme_text_color="Secondary",
-        )
-        bottom.add_widget(self.prev_btn)
-        bottom.add_widget(self.font_down_btn)
-        bottom.add_widget(self.font_size_label)
-        bottom.add_widget(self.font_up_btn)
-        bottom.add_widget(self.translate_btn)
-        bottom.add_widget(self.counter)
-        bottom.add_widget(self.next_btn)
+        self.prev_btn = self.ids.prev_btn
+        self.prev_btn.bind(on_release=lambda *_: self._prev())
+        self.next_btn = self.ids.next_btn
+        self.next_btn.bind(on_release=lambda *_: self._next())
+        self.font_down_btn = self.ids.font_down_btn
+        self.font_down_btn.bind(on_release=lambda *_: self._font(-2))
+        self.font_up_btn = self.ids.font_up_btn
+        self.font_up_btn.bind(on_release=lambda *_: self._font(2))
+        self.translate_btn = self.ids.translate_btn
+        self.translate_btn.bind(on_release=lambda *_: self._toggle_translate())
+        self.font_size_label = self.ids.font_size_label
+        self.counter = self.ids.counter
 
-        self.bottom_bar = bottom
-        self.bottom_divider = MDBoxLayout(
-            size_hint_y=None, height="1dp",
-            md_bg_color=theme.DIVIDER,
-        )
-
-        root = MDBoxLayout(orientation="vertical")
-        root.add_widget(self.header)
-        root.add_widget(self.scroll)
-        root.add_widget(self.bottom_divider)
-        root.add_widget(self.bottom_bar)
-        self.add_widget(root)
+        self.bottom_bar = self.ids.bottom_bar
+        self.bottom_divider = self.ids.bottom_divider
+        self.bottom_divider.md_bg_color = theme.DIVIDER
 
     # ---------- translate toggle ----------
 

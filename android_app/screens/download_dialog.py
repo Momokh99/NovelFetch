@@ -1,14 +1,11 @@
 from kivy.clock import Clock
 from kivymd.app import MDApp
-from kivymd.uix.boxlayout import MDBoxLayout
 from kivymd.uix.label import MDLabel
-from kivymd.uix.progressbar import MDProgressBar
 from kivymd.uix.screen import MDScreen
 from kivymd.uix.snackbar import MDSnackbar
 
 from async_runner import async_loop
-from screens import utils, theme
-from screens.topbar import TopBar
+from screens import utils
 
 
 class DownloadProgressScreen(MDScreen):
@@ -16,7 +13,10 @@ class DownloadProgressScreen(MDScreen):
 
     Started via goto("download_progress", ...) — goto() hands data to load().
     progress_cb runs on the async loop thread, so every update hops back to
-    the Kivy thread via Clock.schedule_once before touching widgets."""
+    the Kivy thread via Clock.schedule_once before touching widgets.
+
+    The widget tree lives in kv/download_dialog.kv; load() reaches the nodes
+    through the ids aliased in __init__."""
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -27,27 +27,10 @@ class DownloadProgressScreen(MDScreen):
         self._total = 0
         self._done = False
 
-        self.topbar = TopBar(title="Downloading…", back=True, on_back=self._back)
-
-        box = MDBoxLayout(
-            orientation="vertical",
-            padding=theme.PAGE_PAD,
-            spacing=theme.SECTION_GAP,
-            adaptive_height=True,
-        )
-        self.title_label = MDLabel(
-            text="", bold=True, font_style="Subtitle1", adaptive_height=True)
-        self.progress_bar = MDProgressBar(value=0, max=1)
-        self.status_label = MDLabel(
-            text="", theme_text_color="Secondary", adaptive_height=True)
-
-        box.add_widget(self.title_label)
-        box.add_widget(self.progress_bar)
-        box.add_widget(self.status_label)
-        root = MDBoxLayout(orientation="vertical")
-        root.add_widget(self.topbar)
-        root.add_widget(box)
-        self.add_widget(root)
+        self.topbar = self.ids.topbar
+        self.title_label = self.ids.title_label
+        self.progress_bar = self.ids.progress_bar
+        self.status_label = self.ids.status_label
 
     def load(self, chapters=None, slug="", source=None, title="", total=None, **kwargs):
         self.chapters = chapters or []
@@ -103,9 +86,6 @@ class DownloadProgressScreen(MDScreen):
             else:
                 self._notify("Novel is already in the library.")
         MDApp.get_running_app().root.homescreen_library_refresh()
-        MDApp.get_running_app().back()
-
-    def _back(self):
         MDApp.get_running_app().back()
 
     def _notify(self, text):

@@ -1,0 +1,58 @@
+<HomeTab>:
+    MDBoxLayout:
+        orientation: "vertical"
+
+        TopBar:
+            id: topbar
+            title: "NovelFetch"
+
+        ScrollView:
+            always_overscroll: False
+
+            MDBoxLayout:
+                orientation: "vertical"
+                adaptive_height: True
+                padding: (dp(16), 0, dp(16), dp(16))
+                spacing: dp(8)
+
+                MDLabel:
+                    text: "My Library"
+                    bold: True
+                    adaptive_height: True
+
+                MDLabel:
+                    id: library_count
+                    text: ""
+                    theme_text_color: "Secondary"
+                    font_style: "Caption"
+                    adaptive_height: True
+
+                MDBoxLayout:
+                    id: library_empty
+                    orientation: "vertical"
+                    size_hint_y: None
+                    height: 0
+                    padding: dp(16)
+                    spacing: dp(4)
+
+                    MDIcon:
+                        icon: "bookshelf"
+                        halign: "center"
+                        font_size: "56dp"
+                        theme_text_color: "Secondary"
+
+                    MDLabel:
+                        text: "Your library is empty"
+                        halign: "center"
+                        bold: True
+                        adaptive_height: True
+
+                    MDLabel:
+                        text: "Browse the hot list or search for novels\nto start reading."
+                        halign: "center"
+                        theme_text_color: "Secondary"
+                        font_style: "Caption"
+                        adaptive_height: True
+
+                MDList:
+                    id: library_list

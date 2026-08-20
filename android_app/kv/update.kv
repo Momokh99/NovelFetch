@@ -1,0 +1,33 @@
+<UpdateTab>:
+    MDBoxLayout:
+        orientation: "vertical"
+
+        TopBar:
+            id: topbar
+            title: "Updates"
+
+        ScrollView:
+            always_overscroll: False
+
+            MDBoxLayout:
+                orientation: "vertical"
+                adaptive_height: True
+                padding: (dp(16), 0, dp(16), dp(16))
+                spacing: dp(8)
+
+                MDLabel:
+                    id: info_label
+                    text: ""
+                    theme_text_color: "Secondary"
+                    font_style: "Caption"
+                    adaptive_height: True
+
+                MDLabel:
+                    id: empty_label
+                    text: ""
+                    halign: "center"
+                    bold: True
+                    adaptive_height: True
+
+                MDList:
+                    id: list_view

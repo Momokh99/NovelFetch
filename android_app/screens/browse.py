@@ -1,3 +1,4 @@
+from kivy.factory import Factory
 from kivymd.app import MDApp
 from kivymd.uix.boxlayout import MDBoxLayout
 from kivymd.uix.dialog import MDDialog
@@ -110,6 +111,12 @@ class BrowseSection(MDBoxLayout):
 
     def _notify(self, text):
         MDSnackbar(MDLabel(text=text)).open()
+
+
+# BrowseSection is referenced from kv/search_tab.kv before the screens package
+# is imported at build time; register it with the Factory so KV instantiates
+# the real class (with its row-building __init__) instead of a dynamic stub.
+Factory.register("BrowseSection", cls=BrowseSection, module="screens.browse")
 
 
 

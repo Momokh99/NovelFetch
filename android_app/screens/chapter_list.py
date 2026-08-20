@@ -1,7 +1,6 @@
 from kivy.clock import Clock
 from kivy.metrics import dp
 from kivy.uix.image import AsyncImage
-from kivy.uix.scrollview import ScrollView
 
 from kivymd.app import MDApp
 from kivymd.uix.boxlayout import MDBoxLayout
@@ -21,7 +20,6 @@ from kivymd.uix.snackbar import MDSnackbar
 from progress import progress
 from async_runner import async_loop
 from screens import utils, theme
-from screens.topbar import TopBar
 
 
 class ChapterListScreen(MDScreen):
@@ -46,72 +44,25 @@ class ChapterListScreen(MDScreen):
         self._built = 0
         self._loading_more = False
 
-        self.topbar = TopBar(
-            title="Chapter list",
-            back=True,
-            on_back=self._left_action,
-            actions=[
-                ("select-multiple", self._toggle_select_mode),
-                ("dots-vertical", self._open_overflow),
-            ],
-        )
+        self.topbar = self.ids.topbar
+        self.topbar.on_back = self._left_action
+        self.topbar.set_actions([
+            ("select-multiple", self._toggle_select_mode),
+            ("dots-vertical", self._open_overflow),
+        ])
 
-        header = MDBoxLayout(
-            orientation="horizontal", adaptive_height=False,
-            padding="16dp", spacing="16dp",
-            size_hint_y=None, height="120dp",
-        )
-        texts = MDBoxLayout(orientation="vertical", size_hint_y=1, spacing="2dp")
-        self.title_label = MDLabel(
-            text="", bold=True, font_style="Subtitle1",
-            size_hint_y=None, height="28dp")
-        self.info_label = MDLabel(
-            text="", theme_text_color="Secondary",
-            font_style="Caption", size_hint_y=None, height="20dp")
-        texts.add_widget(self.title_label)
-        texts.add_widget(self.info_label)
-
-        self.cover_img = AsyncImage(
-            source="",
-            size_hint=(None, 1),
-            width=dp(90),
-            keep_ratio=True,
-            allow_stretch=True,
-        )
-        header.add_widget(texts)
-        header.add_widget(self.cover_img)
-
-        self.continue_btn = MDRaisedButton(
-            text="Continue",
-            size_hint=(1, None),
-            height="48dp",
-            md_bg_color=theme.ACCENT,
-        )
+        self.title_label = self.ids.title_label
+        self.info_label = self.ids.info_label
+        self.cover_img = self.ids.cover_img
+        self.continue_btn = self.ids.continue_btn
+        self.continue_btn.md_bg_color = theme.ACCENT
         self.continue_btn.bind(on_release=lambda *_: self._continue())
-
-        self.download_btn = MDRaisedButton(
-            text="Download selected",
-            size_hint=(1, None),
-            height="48dp",
-            md_bg_color=theme.ACCENT,
-        )
+        self.download_btn = self.ids.download_btn
+        self.download_btn.md_bg_color = theme.ACCENT
         self.download_btn.bind(on_release=lambda *_: self._download_selected())
-
-        body = ScrollView()
-        self._scroll_view = body
-        body.bind(scroll_y=self._on_scroll)
-        content = MDBoxLayout(orientation="vertical", adaptive_height=True)
-        content.add_widget(header)
-        content.add_widget(self.continue_btn)
-        content.add_widget(self.download_btn)
-        self.list_view = MDList()
-        content.add_widget(self.list_view)
-        body.add_widget(content)
-
-        root = MDBoxLayout(orientation="vertical")
-        root.add_widget(self.topbar)
-        root.add_widget(body)
-        self.add_widget(root)
+        self._scroll_view = self.ids.scroll_view
+        self._scroll_view.bind(scroll_y=self._on_scroll)
+        self.list_view = self.ids.list_view
         self._rebuild()
 
     def load(self, chapters, slug="", source=None, title="Chapter list", cover=""):

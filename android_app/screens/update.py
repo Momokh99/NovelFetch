@@ -1,20 +1,17 @@
 from kivy.clock import Clock
 from kivy.metrics import dp
-from kivy.uix.scrollview import ScrollView
 
 from kivymd.app import MDApp
 from kivymd.uix.boxlayout import MDBoxLayout
 from kivymd.uix.button import MDIconButton
 from kivymd.uix.fitimage import FitImage
 from kivymd.uix.label import MDLabel
-from kivymd.uix.list import MDList
 from kivymd.uix.screen import MDScreen
 from kivymd.uix.snackbar import MDSnackbar
 
 from async_runner import async_loop
 from screens import utils, theme
 from screens.novel_list import _TapCard
-from screens.topbar import TopBar
 
 import os
 
@@ -28,32 +25,12 @@ class UpdateTab(MDScreen):
         self._busy = False
         self._results = []
 
-        self.topbar = TopBar(
-            title="Updates",
-            actions=[("refresh", self.refresh)],
-        )
-
-        body = ScrollView(always_overscroll=False)
-        content = MDBoxLayout(orientation="vertical", adaptive_height=True,
-                              padding=theme.TAB_CONTENT_PAD, spacing=theme.SECTION_GAP)
-
-        self.info_label = MDLabel(
-            text="", theme_text_color="Secondary",
-            font_style="Caption", adaptive_height=True)
-        content.add_widget(self.info_label)
-
-        self.empty_label = MDLabel(
-            text="", halign="center", bold=True, adaptive_height=True)
-        content.add_widget(self.empty_label)
-
-        self.list_view = MDList()
-        content.add_widget(self.list_view)
-
-        body.add_widget(content)
-        root = MDBoxLayout(orientation="vertical")
-        root.add_widget(self.topbar)
-        root.add_widget(body)
-        self.add_widget(root)
+        # Widget tree lives in kv/update.kv; alias the runtime-touched nodes.
+        self.topbar = self.ids.topbar
+        self.topbar.set_actions([("refresh", self.refresh)])
+        self.info_label = self.ids.info_label
+        self.empty_label = self.ids.empty_label
+        self.list_view = self.ids.list_view
 
         # Populate on first frame (after on_start sets up sources), like Home.
         Clock.schedule_once(lambda dt: self.refresh(), 0)

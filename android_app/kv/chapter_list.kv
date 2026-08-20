@@ -1,0 +1,68 @@
+<ChapterListScreen>:
+    MDBoxLayout:
+        orientation: "vertical"
+
+        TopBar:
+            id: topbar
+            title: "Chapter list"
+            back: True
+
+        ScrollView:
+            id: scroll_view
+            always_overscroll: False
+
+            MDBoxLayout:
+                orientation: "vertical"
+                adaptive_height: True
+
+                MDBoxLayout:
+                    orientation: "horizontal"
+                    adaptive_height: False
+                    padding: "16dp"
+                    spacing: "16dp"
+                    size_hint_y: None
+                    height: "120dp"
+
+                    MDBoxLayout:
+                        orientation: "vertical"
+                        size_hint_y: 1
+                        spacing: "2dp"
+
+                        MDLabel:
+                            id: title_label
+                            text: ""
+                            bold: True
+                            font_style: "Subtitle1"
+                            size_hint_y: None
+                            height: "28dp"
+
+                        MDLabel:
+                            id: info_label
+                            text: ""
+                            theme_text_color: "Secondary"
+                            font_style: "Caption"
+                            size_hint_y: None
+                            height: "20dp"
+
+                    AsyncImage:
+                        id: cover_img
+                        source: ""
+                        size_hint: (None, 1)
+                        width: "90dp"
+                        keep_ratio: True
+                        allow_stretch: True
+
+                MDRaisedButton:
+                    id: continue_btn
+                    text: "Continue"
+                    size_hint: (1, None)
+                    height: "48dp"
+
+                MDRaisedButton:
+                    id: download_btn
+                    text: "Download selected"
+                    size_hint: (1, None)
+                    height: "48dp"
+
+                MDList:
+                    id: list_view

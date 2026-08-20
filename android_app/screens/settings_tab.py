@@ -2,22 +2,18 @@ import os
 import shutil
 
 from kivy.clock import Clock
-from kivy.uix.scrollview import ScrollView
+from kivy.properties import StringProperty
 
 from kivymd.app import MDApp
-from kivymd.uix.boxlayout import MDBoxLayout
 from kivymd.uix.button import MDFlatButton
 from kivymd.uix.dialog import MDDialog
 from kivymd.uix.label import MDLabel
-from kivymd.uix.list import MDList, OneLineAvatarIconListItem, IconLeftWidget
+from kivymd.uix.list import MDList, OneLineAvatarIconListItem
 from kivymd.uix.screen import MDScreen
-from kivymd.uix.selectioncontrol import MDSwitch
 from kivymd.uix.snackbar import MDSnackbar
 
 from progress import progress, _scan_library
 from sources import REGISTRY
-from screens import theme
-from screens.topbar import TopBar
 
 PALETTES = [
     "Red", "Pink", "Purple", "DeepPurple", "Indigo", "Blue", "LightBlue",
@@ -29,62 +25,21 @@ PALETTES = [
 class SettingsTab(MDScreen):
     """Appearance (theme/palette) and library management."""
 
+    about_text = StringProperty("")
+
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self._palette_dialog = None
         self._clear_dialog = None
 
-        self.topbar = TopBar(title="Settings")
-
-        body = ScrollView(always_overscroll=False)
-        content = MDBoxLayout(orientation="vertical", adaptive_height=True,
-                              padding=theme.TAB_CONTENT_PAD, spacing=theme.SECTION_GAP)
-
-        # ---- appearance ----
-        content.add_widget(MDLabel(
-            text="Appearance", bold=True, adaptive_height=True))
-
-        self.theme_row = OneLineAvatarIconListItem(text="Dark theme")
-        self.theme_switch = MDSwitch()
-        self.theme_switch.bind(active=lambda *_: self._toggle_theme())
-        self.theme_row.add_widget(IconLeftWidget(icon="brightness-4"))
-        self.theme_row.add_widget(self.theme_switch)
-        content.add_widget(self.theme_row)
-
-        self.palette_row = OneLineAvatarIconListItem(
-            text="Primary color",
-            on_release=lambda *_: self._open_palette())
-        self.palette_row.add_widget(IconLeftWidget(icon="palette"))
-        content.add_widget(self.palette_row)
-
-        # ---- library ----
-        content.add_widget(MDLabel(
-            text="Library", bold=True, adaptive_height=True))
-        self.library_info = MDLabel(
-            text="", theme_text_color="Secondary",
-            font_style="Caption", adaptive_height=True)
-        content.add_widget(self.library_info)
-
-        self.clear_row = OneLineAvatarIconListItem(
-            text="Clear library",
-            on_release=lambda *_: self._confirm_clear())
-        self.clear_row.add_widget(IconLeftWidget(icon="delete"))
-        content.add_widget(self.clear_row)
-
-        # ---- about ----
-        content.add_widget(MDLabel(
-            text="About", bold=True, adaptive_height=True))
-        sources = ", ".join(s.label for s in REGISTRY.values())
-        content.add_widget(MDLabel(
-            text=f"NovelFetch\nSources: {sources}",
-            theme_text_color="Secondary", font_style="Caption",
-            adaptive_height=True))
-
-        body.add_widget(content)
-        root = MDBoxLayout(orientation="vertical")
-        root.add_widget(self.topbar)
-        root.add_widget(body)
-        self.add_widget(root)
+        # Widget tree lives in kv/settings_tab.kv; alias the runtime-touched
+        # nodes so the rest of this file keeps working unchanged.
+        self.topbar = self.ids.topbar
+        self.theme_switch = self.ids.theme_switch
+        self.palette_row = self.ids.palette_row
+        self.library_info = self.ids.library_info
+        self.about_text = "NovelFetch\nSources: " + ", ".join(
+            s.label for s in REGISTRY.values())
 
         # theme_style is set in App.build(), AFTER this tab is constructed;
         # a zero-delay callback runs on the first frame, after on_start.

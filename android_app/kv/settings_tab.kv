@@ -1,0 +1,65 @@
+<SettingsTab>:
+    MDBoxLayout:
+        orientation: "vertical"
+
+        TopBar:
+            id: topbar
+            title: "Settings"
+
+        ScrollView:
+            always_overscroll: False
+
+            MDBoxLayout:
+                orientation: "vertical"
+                adaptive_height: True
+                padding: (dp(16), 0, dp(16), dp(16))
+                spacing: dp(8)
+
+                MDLabel:
+                    text: "Appearance"
+                    bold: True
+                    adaptive_height: True
+
+                OneLineAvatarIconListItem:
+                    text: "Dark theme"
+                    IconLeftWidget:
+                        icon: "brightness-4"
+                    MDSwitch:
+                        id: theme_switch
+                        on_active: root._toggle_theme()
+
+                OneLineAvatarIconListItem:
+                    id: palette_row
+                    text: "Primary color"
+                    on_release: root._open_palette()
+                    IconLeftWidget:
+                        icon: "palette"
+
+                MDLabel:
+                    text: "Library"
+                    bold: True
+                    adaptive_height: True
+
+                MDLabel:
+                    id: library_info
+                    text: ""
+                    theme_text_color: "Secondary"
+                    font_style: "Caption"
+                    adaptive_height: True
+
+                OneLineAvatarIconListItem:
+                    text: "Clear library"
+                    on_release: root._confirm_clear()
+                    IconLeftWidget:
+                        icon: "delete"
+
+                MDLabel:
+                    text: "About"
+                    bold: True
+                    adaptive_height: True
+
+                MDLabel:
+                    text: root.about_text
+                    theme_text_color: "Secondary"
+                    font_style: "Caption"
+                    adaptive_height: True

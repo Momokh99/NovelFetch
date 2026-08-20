@@ -1,0 +1,26 @@
+<HistoryTab>:
+    MDBoxLayout:
+        orientation: "vertical"
+
+        TopBar:
+            id: topbar
+            title: "History"
+
+        ScrollView:
+            always_overscroll: False
+
+            MDBoxLayout:
+                orientation: "vertical"
+                adaptive_height: True
+                padding: (dp(16), 0, dp(16), dp(16))
+                spacing: dp(8)
+
+                MDLabel:
+                    id: empty_label
+                    text: ""
+                    halign: "center"
+                    bold: True
+                    adaptive_height: True
+
+                MDList:
+                    id: list_view

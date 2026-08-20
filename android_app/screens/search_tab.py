@@ -1,23 +1,19 @@
 from kivy.clock import Clock
 from kivy.metrics import dp
 from kivy.uix.image import AsyncImage
-from kivy.uix.scrollview import ScrollView
 
 from kivymd.app import MDApp
 from kivymd.uix.boxlayout import MDBoxLayout
 from kivymd.uix.button import MDIconButton
 from kivymd.uix.label import MDLabel
-from kivymd.uix.list import MDList
 from kivymd.uix.screen import MDScreen
 from kivymd.uix.snackbar import MDSnackbar
-from kivymd.uix.textfield import MDTextField
 
 from async_runner import async_loop
 from screens import utils, theme
 from screens.browse import BrowseSection
 from screens.novel_list import _TapCard
 from screens.source_picker import open_source_picker
-from screens.topbar import TopBar
 
 
 class SearchTab(MDScreen):
@@ -30,68 +26,22 @@ class SearchTab(MDScreen):
         self._debounce = None
         self._clearing = False
 
-        self.topbar = TopBar(title="Search")
-
-        body = ScrollView(always_overscroll=False)
-        content = MDBoxLayout(orientation="vertical", adaptive_height=True,
-                              padding=theme.TAB_CONTENT_PAD, spacing=theme.SECTION_GAP)
-
-        # Source switcher: tap to open the shared picker dialog.
-        self.source_label = MDLabel(
-            text="", theme_text_color="Secondary",
-            font_style="Caption", size_hint_y=None, height="48dp",
-            valign="top", text_size=(None, "48dp"))
-        self.source_btn = MDIconButton(
-            icon="swap-horizontal",
-            size_hint=(None, None), size=(40, 32),
-            on_release=lambda *_: open_source_picker())
-        source_bar = MDBoxLayout(
-            orientation="horizontal", adaptive_height=True,
-            spacing="8dp", size_hint=(1, None))
-        source_bar.add_widget(self.source_label)
-        source_bar.add_widget(self.source_btn)
-        content.add_widget(source_bar)
-
-        self.search_field = MDTextField(
-            hint_text="Search novels…",
-            mode="round",
-            icon_left="magnify",
-            size_hint=(1, None),
-            height="56dp",
-        )
-        self.search_field.bind(
-            on_text_validate=lambda *_: self._on_enter(),
-            text=lambda *_: self._on_text_changed(),
-        )
-        self.clear_btn = MDIconButton(icon="close", on_release=lambda *_: self._clear())
-
-        search_bar = MDBoxLayout(
-            orientation="horizontal", adaptive_height=True,
-            spacing="8dp", size_hint=(1, None),
-        )
-        search_bar.add_widget(self.search_field)
-        search_bar.add_widget(self.clear_btn)
-        content.add_widget(search_bar)
-
-        self.browse_box = MDBoxLayout(orientation="vertical", adaptive_height=True)
-        self.browse_section = BrowseSection()
-        self.browse_box.add_widget(self.browse_section)
-        content.add_widget(self.browse_box)
-
-        self.results_box = MDBoxLayout(orientation="vertical", adaptive_height=True)
-        self.results_list = MDList()
-        self.results_box.add_widget(self.results_list)
-        content.add_widget(self.results_box)
-
-        body.add_widget(content)
-        root = MDBoxLayout(orientation="vertical")
-        root.add_widget(self.topbar)
-        root.add_widget(body)
-        self.add_widget(root)
+        # Widget tree lives in kv/search_tab.kv; alias the runtime-touched nodes.
+        self.topbar = self.ids.topbar
+        self.source_label = self.ids.source_label
+        self.source_btn = self.ids.source_btn
+        self.search_field = self.ids.search_field
+        self.clear_btn = self.ids.clear_btn
+        self.browse_box = self.ids.browse_box
+        self.results_box = self.ids.results_box
+        self.results_list = self.ids.results_list
 
         # current_source is set in App.on_start(), AFTER build(). A zero-delay
         # Clock callback fires on the first frame — after on_start has run.
         Clock.schedule_once(lambda dt: self.refresh_source(), 0)
+
+    def _open_source_picker(self):
+        open_source_picker()
 
     # ---------- source switcher ----------
 

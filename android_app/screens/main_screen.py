@@ -16,6 +16,7 @@ from screens.novel_list import NovelListScreen
 from screens.chapter_list import ChapterListScreen
 from screens.reader import ReaderScreen
 from screens.download_dialog import DownloadProgressScreen
+import screens.topbar  # noqa: F401  — registers TopBar in the Factory for KV
 
 
 class MainScreen(BoxLayout):
