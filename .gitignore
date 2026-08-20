@@ -20,3 +20,4 @@ android_app/novels/
 # Buildozer / Kivy build artifacts
 .buildozer/
 android_app/.buildozer/
+bin/
