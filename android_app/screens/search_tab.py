@@ -13,9 +13,10 @@ from kivymd.uix.snackbar import MDSnackbar
 from kivymd.uix.textfield import MDTextField
 
 from async_runner import async_loop
-from screens import utils
+from screens import utils, theme
 from screens.browse import BrowseSection
 from screens.novel_list import _TapCard
+from screens.source_picker import open_source_picker
 from screens.topbar import TopBar
 
 
@@ -31,9 +32,25 @@ class SearchTab(MDScreen):
 
         self.topbar = TopBar(title="Search")
 
-        body = ScrollView()
+        body = ScrollView(always_overscroll=False)
         content = MDBoxLayout(orientation="vertical", adaptive_height=True,
-                              padding="16dp", spacing="8dp")
+                              padding=theme.TAB_CONTENT_PAD, spacing=theme.SECTION_GAP)
+
+        # Source switcher: tap to open the shared picker dialog.
+        self.source_label = MDLabel(
+            text="", theme_text_color="Secondary",
+            font_style="Caption", size_hint_y=None, height="48dp",
+            valign="top", text_size=(None, "48dp"))
+        self.source_btn = MDIconButton(
+            icon="swap-horizontal",
+            size_hint=(None, None), size=(40, 32),
+            on_release=lambda *_: open_source_picker())
+        source_bar = MDBoxLayout(
+            orientation="horizontal", adaptive_height=True,
+            spacing="8dp", size_hint=(1, None))
+        source_bar.add_widget(self.source_label)
+        source_bar.add_widget(self.source_btn)
+        content.add_widget(source_bar)
 
         self.search_field = MDTextField(
             hint_text="Search novels…",
@@ -71,6 +88,18 @@ class SearchTab(MDScreen):
         root.add_widget(self.topbar)
         root.add_widget(body)
         self.add_widget(root)
+
+        # current_source is set in App.on_start(), AFTER build(). A zero-delay
+        # Clock callback fires on the first frame — after on_start has run.
+        Clock.schedule_once(lambda dt: self.refresh_source(), 0)
+
+    # ---------- source switcher ----------
+
+    def refresh_source(self):
+        """Update the source-switch button label to the active source."""
+        source = MDApp.get_running_app().current_source
+        self.source_label.text = f"Source: {source.label}" if source else "No source"
+        self.source_btn.icon = "swap-horizontal"
 
     # ---------- search ----------
 
@@ -142,8 +171,7 @@ class SearchTab(MDScreen):
             orientation="horizontal",
             size_hint_y=None,
             height=dp(120),
-            padding="12dp",
-            spacing="16dp",
+            padding=theme.CARD_PAD, spacing=theme.CARD_GAP,
         )
         cover = novel.get("cover", "") or ""
         img = AsyncImage(

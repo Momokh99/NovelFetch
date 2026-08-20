@@ -10,7 +10,7 @@ from kivymd.uix.label import MDLabel
 from kivymd.uix.list import MDList
 from kivymd.uix.screen import MDScreen
 
-from screens import utils
+from screens import utils, theme
 from screens.topbar import TopBar
 
 
@@ -51,8 +51,7 @@ class NovelListScreen(MDScreen):
             orientation="horizontal",
             size_hint_y=None,
             height=dp(120),
-            padding="12dp",
-            spacing="16dp",
+            padding=theme.CARD_PAD, spacing=theme.CARD_GAP,
         )
         cover = novel.get("cover", "") or ""
         img = AsyncImage(

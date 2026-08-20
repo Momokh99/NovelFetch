@@ -14,6 +14,7 @@ from kivymd.uix.screen import MDScreen
 
 from progress import _scan_library, progress
 from screens import utils                    # _get_source helper, meta
+from screens import theme
 from screens.novel_list import _TapCard
 from screens.source_picker import open_source_picker
 from screens.topbar import TopBar
@@ -28,9 +29,9 @@ class HomeTab(MDScreen):
             actions=[("book-open-variant", open_source_picker)],
         )
 
-        body = ScrollView()
+        body = ScrollView(always_overscroll=False)
         content = MDBoxLayout(orientation="vertical", adaptive_height=True,
-                              padding="16dp", spacing="8dp")
+                              padding=theme.TAB_CONTENT_PAD, spacing=theme.SECTION_GAP)
 
         content.add_widget(MDLabel(text="My Library", bold=True, adaptive_height=True))
         self.library_count = MDLabel(
@@ -80,6 +81,8 @@ class HomeTab(MDScreen):
             and not utils._has_chapters(n["slug"])
         )
         if novels:
+            self.library_empty.size_hint_y = None
+            self.library_empty.height = 0
             self.library_empty.opacity = 0
             self.library_empty.disabled = True
             count_text = f"{len(novels)} novel{'s' if len(novels) != 1 else ''}"
@@ -87,6 +90,7 @@ class HomeTab(MDScreen):
                 count_text += f" · {n_tracked} tracked"
             self.library_count.text = count_text
         else:
+            self.library_empty.adaptive_height = True
             self.library_empty.opacity = 1
             self.library_empty.disabled = False
             self.library_count.text = ""
@@ -116,16 +120,16 @@ class HomeTab(MDScreen):
                 padding="12dp",
                 spacing="16dp",
                 elevation=2,
-                radius=[14, 14, 14, 14],
+                radius=theme.CARD_RADIUS,
             )
 
             cover_box = MDBoxLayout(
                 size_hint=(None, 1), width=dp(62),
-                radius=[10, 10, 10, 10], md_bg_color=[1, 1, 1, 0.08],
+                radius=[10, 10, 10, 10], md_bg_color=theme.surface_color(),
             )
             if cover:
                 cover_box.add_widget(FitImage(
-                    source=cover, radius=[10, 10, 10, 10], size_hint=(1, 1)))
+                    source=cover, radius=theme.COVER_RADIUS, size_hint=(1, 1)))
             row.add_widget(cover_box)
 
             texts = MDBoxLayout(orientation="vertical", size_hint_y=1, spacing="2dp")

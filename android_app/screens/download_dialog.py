@@ -7,7 +7,7 @@ from kivymd.uix.screen import MDScreen
 from kivymd.uix.snackbar import MDSnackbar
 
 from async_runner import async_loop
-from screens import utils
+from screens import utils, theme
 from screens.topbar import TopBar
 
 
@@ -31,8 +31,8 @@ class DownloadProgressScreen(MDScreen):
 
         box = MDBoxLayout(
             orientation="vertical",
-            padding="24dp",
-            spacing="16dp",
+            padding=theme.PAGE_PAD,
+            spacing=theme.SECTION_GAP,
             adaptive_height=True,
         )
         self.title_label = MDLabel(

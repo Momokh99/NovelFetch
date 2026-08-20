@@ -16,6 +16,7 @@ from kivymd.uix.snackbar import MDSnackbar
 
 from progress import progress, _scan_library
 from sources import REGISTRY
+from screens import theme
 from screens.topbar import TopBar
 
 PALETTES = [
@@ -35,9 +36,9 @@ class SettingsTab(MDScreen):
 
         self.topbar = TopBar(title="Settings")
 
-        body = ScrollView()
+        body = ScrollView(always_overscroll=False)
         content = MDBoxLayout(orientation="vertical", adaptive_height=True,
-                              padding="16dp", spacing="8dp")
+                              padding=theme.TAB_CONTENT_PAD, spacing=theme.SECTION_GAP)
 
         # ---- appearance ----
         content.add_widget(MDLabel(

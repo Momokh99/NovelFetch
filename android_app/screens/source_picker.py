@@ -23,6 +23,9 @@ def open_source_picker():
         app.current_source = source
         _dialog.dismiss()
         MDSnackbar(MDLabel(text=f"Switched to {source.label}")).open()
+        root = app.root
+        if hasattr(root, "search_tab"):
+            root.search_tab.refresh_source()
 
     content = MDList()
     for source in REGISTRY.values():

@@ -20,7 +20,7 @@ from kivymd.uix.snackbar import MDSnackbar
 
 from progress import progress
 from async_runner import async_loop
-from screens import utils
+from screens import utils, theme
 from screens.topbar import TopBar
 
 
@@ -85,7 +85,7 @@ class ChapterListScreen(MDScreen):
             text="Continue",
             size_hint=(1, None),
             height="48dp",
-            md_bg_color=[0.2, 0.5, 0.9, 1],
+            md_bg_color=theme.ACCENT,
         )
         self.continue_btn.bind(on_release=lambda *_: self._continue())
 
@@ -93,7 +93,7 @@ class ChapterListScreen(MDScreen):
             text="Download selected",
             size_hint=(1, None),
             height="48dp",
-            md_bg_color=[0.2, 0.5, 0.9, 1],
+            md_bg_color=theme.ACCENT,
         )
         self.download_btn.bind(on_release=lambda *_: self._download_selected())
 

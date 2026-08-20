@@ -32,8 +32,9 @@ class MainScreen(BoxLayout):
         self.history_tab = HistoryTab()
         self.nav.add_widget(MDBottomNavigationItem(
             self.home_tab, name="home", text="Home", icon="home"))
+        self.search_tab = SearchTab()
         self.nav.add_widget(MDBottomNavigationItem(
-            SearchTab(), name="search", text="Search", icon="magnify"))
+            self.search_tab, name="search", text="Search", icon="magnify"))
         self.nav.add_widget(MDBottomNavigationItem(
             self.update_tab, name="updates", text="Updates", icon="update"))
         self.nav.add_widget(MDBottomNavigationItem(
@@ -59,6 +60,8 @@ class MainScreen(BoxLayout):
         # Kivy prepends the dispatcher instance, so args are (nav, item, name).
         if name_tab == "home":
             self.home_tab.refresh_library()
+        elif name_tab == "search":
+            self.search_tab.refresh_source()
         elif name_tab == "updates":
             self.update_tab.refresh()
         elif name_tab == "history":

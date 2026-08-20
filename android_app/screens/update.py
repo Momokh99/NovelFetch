@@ -5,15 +5,18 @@ from kivy.uix.scrollview import ScrollView
 from kivymd.app import MDApp
 from kivymd.uix.boxlayout import MDBoxLayout
 from kivymd.uix.button import MDIconButton
+from kivymd.uix.fitimage import FitImage
 from kivymd.uix.label import MDLabel
 from kivymd.uix.list import MDList
 from kivymd.uix.screen import MDScreen
 from kivymd.uix.snackbar import MDSnackbar
 
 from async_runner import async_loop
-from screens import utils
+from screens import utils, theme
 from screens.novel_list import _TapCard
 from screens.topbar import TopBar
+
+import os
 
 
 class UpdateTab(MDScreen):
@@ -30,9 +33,9 @@ class UpdateTab(MDScreen):
             actions=[("refresh", self.refresh)],
         )
 
-        body = ScrollView()
+        body = ScrollView(always_overscroll=False)
         content = MDBoxLayout(orientation="vertical", adaptive_height=True,
-                              padding="16dp", spacing="8dp")
+                              padding=theme.TAB_CONTENT_PAD, spacing=theme.SECTION_GAP)
 
         self.info_label = MDLabel(
             text="", theme_text_color="Secondary",
@@ -115,9 +118,18 @@ class UpdateTab(MDScreen):
             orientation="horizontal",
             size_hint_y=None,
             height=dp(76),
-            padding="12dp",
-            spacing="16dp",
+            padding=theme.CARD_PAD, spacing=theme.CARD_GAP,
         )
+        cover = utils._read_meta(res["slug"]).get("cover", "")
+        if cover:
+            cover_box = MDBoxLayout(
+                size_hint=(None, 1), width=dp(48),
+                radius=[8, 8, 8, 8], md_bg_color=theme.surface_color(),
+            )
+            cover_box.add_widget(FitImage(
+                source=os.path.join("novels", res["slug"], cover),
+                radius=[8, 8, 8, 8], size_hint=(1, 1)))
+            row.add_widget(cover_box)
         texts = MDBoxLayout(orientation="vertical", size_hint_y=1, spacing="2dp")
         texts.add_widget(MDLabel(
             text=res["title"], bold=True,

@@ -15,7 +15,7 @@ from kivymd.uix.snackbar import MDSnackbar
 
 from progress import LANGUAGES, progress
 from async_runner import async_loop
-from screens import utils
+from screens import utils, theme
 from screens.topbar import TopBar
 from translation import _translate_text
 
@@ -89,7 +89,7 @@ class ReaderScreen(MDScreen):
         self.bottom_bar = bottom
         self.bottom_divider = MDBoxLayout(
             size_hint_y=None, height="1dp",
-            md_bg_color=[0.5, 0.5, 0.5, 0.35],
+            md_bg_color=theme.DIVIDER,
         )
 
         root = MDBoxLayout(orientation="vertical")

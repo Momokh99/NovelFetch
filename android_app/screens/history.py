@@ -1,16 +1,18 @@
 from datetime import datetime
+import os
 
 from kivy.clock import Clock
 from kivy.metrics import dp
 from kivy.uix.scrollview import ScrollView
 
 from kivymd.uix.boxlayout import MDBoxLayout
+from kivymd.uix.fitimage import FitImage
 from kivymd.uix.label import MDLabel
 from kivymd.uix.list import MDList
 from kivymd.uix.screen import MDScreen
 
 from progress import _scan_library, progress
-from screens import utils
+from screens import utils, theme
 from screens.novel_list import _TapCard
 from screens.topbar import TopBar
 
@@ -41,9 +43,9 @@ class HistoryTab(MDScreen):
         super().__init__(**kwargs)
         self.topbar = TopBar(title="History")
 
-        body = ScrollView()
+        body = ScrollView(always_overscroll=False)
         content = MDBoxLayout(orientation="vertical", adaptive_height=True,
-                              padding="16dp", spacing="8dp")
+                              padding=theme.TAB_CONTENT_PAD, spacing=theme.SECTION_GAP)
 
         self.empty_label = MDLabel(
             text="", halign="center", bold=True, adaptive_height=True)
@@ -86,9 +88,17 @@ class HistoryTab(MDScreen):
             orientation="horizontal",
             size_hint_y=None,
             height=dp(76),
-            padding="12dp",
-            spacing="16dp",
+            padding=theme.CARD_PAD, spacing=theme.CARD_GAP,
         )
+        cover = self._cover_path(slug)
+        if cover:
+            cover_box = MDBoxLayout(
+                size_hint=(None, 1), width=dp(48),
+                radius=[8, 8, 8, 8], md_bg_color=theme.surface_color(),
+            )
+            cover_box.add_widget(FitImage(
+                source=cover, radius=[8, 8, 8, 8], size_hint=(1, 1)))
+            row.add_widget(cover_box)
         texts = MDBoxLayout(orientation="vertical", size_hint_y=1, spacing="2dp")
         texts.add_widget(MDLabel(
             text=title, bold=True,
@@ -101,6 +111,14 @@ class HistoryTab(MDScreen):
         source = utils._get_source(slug)
         row.on_release = lambda s=slug, t=title, src=source: self._open(s, t, src)
         return row
+
+    def _cover_path(self, slug):
+        meta = utils._read_meta(slug)
+        cover = meta.get("cover")
+        if not cover:
+            return ""
+        path = os.path.join("novels", slug, cover)
+        return path if os.path.exists(path) else ""
 
     def _open(self, slug, title, source):
         raw = slug.split(":", 1)[-1] if ":" in slug else slug

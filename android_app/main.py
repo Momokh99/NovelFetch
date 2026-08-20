@@ -22,7 +22,7 @@ class NovelFetchApp(MDApp):
         if platform == "android":
             os.chdir(self.user_data_dir)
         self.theme_cls.theme_style = "Dark"
-        self.theme_cls.primary_palette = "Orange"
+        self.theme_cls.primary_palette = "Blue"
 
         from async_runner import async_loop
         async_loop.start()
