@@ -1,5 +1,6 @@
 import json
 import os
+import re
 import threading
 import time
 
@@ -144,6 +145,22 @@ class ProgressTracker:
 
 progress = ProgressTracker(PROGRESS_FILE)
 
+
+LANGUAGES = {
+    "Arabic": "ar", "Chinese": "zh-cn", "French": "fr", "German": "de",
+    "Hindi": "hi", "Italian": "it", "Japanese": "ja", "Korean": "ko",
+    "Portuguese": "pt", "Russian": "ru", "Spanish": "es", "Turkish": "tr",
+}
+
+_LANG_CODES = set(LANGUAGES.values())
+_TRANSL_SUFFIX = re.compile(r"^.+_([a-z]{2}(?:-[a-z]{2})?)\.txt$")
+
+
+def _is_translation_file(fname):
+    m = _TRANSL_SUFFIX.match(fname)
+    return m.group(1) if m and m.group(1) in _LANG_CODES else None
+
+
 def _scan_library():
     novels_dir = "novels"
     if not os.path.isdir(novels_dir):
@@ -153,15 +170,13 @@ def _scan_library():
         if "meta.json" not in files:
             continue
         rel = os.path.relpath(root, novels_dir).replace(os.sep, "/")
-        result.append({"slug": rel, "title": _slug_to_title(rel), "count": len(files)})
+        count = sum(1 for f in files
+                    if f == "meta.json" or
+                    (f.endswith(".txt") and _is_translation_file(f) is None) or
+                    (not f.endswith(".txt") and not f.endswith(".tmp")))
+        result.append({"slug": rel, "title": _slug_to_title(rel), "count": count})
     result.sort(key=lambda n: n["slug"])
     return result
-
-LANGUAGES = {
-    "Arabic": "ar", "Chinese": "zh-cn", "French": "fr", "German": "de",
-    "Hindi": "hi", "Italian": "it", "Japanese": "ja", "Korean": "ko",
-    "Portuguese": "pt", "Russian": "ru", "Spanish": "es", "Turkish": "tr",
-}
 
 
 def _slug_to_title(slug):

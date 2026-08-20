@@ -26,18 +26,23 @@ class DownloadProgressScreen(MDScreen):
         self._title = ""
         self._total = 0
         self._done = False
+        self._translate = False
+        self._lang = ""
 
         self.topbar = self.ids.topbar
         self.title_label = self.ids.title_label
         self.progress_bar = self.ids.progress_bar
         self.status_label = self.ids.status_label
 
-    def load(self, chapters=None, slug="", source=None, title="", total=None, **kwargs):
+    def load(self, chapters=None, slug="", source=None, title="",
+             total=None, translate=False, lang="", **kwargs):
         self.chapters = chapters or []
         self.slug = slug
         self.source = source
         self._title = title or "Downloading…"
         self._total = total or len(self.chapters)
+        self._translate = translate
+        self._lang = lang
         self.topbar.set_title(self._title)
         self.title_label.text = self._title
         self.progress_bar.max = max(len(self.chapters), 1)
@@ -60,7 +65,8 @@ class DownloadProgressScreen(MDScreen):
         async def coro():
             return await utils._download_novel(
                 self.source, self.slug, self.chapters, self._title,
-                total=self._total, progress_cb=self._on_progress)
+                total=self._total, progress_cb=self._on_progress,
+                translate=self._translate, lang=self._lang)
 
         async_loop.run(coro(), self._on_done)
 
@@ -71,7 +77,8 @@ class DownloadProgressScreen(MDScreen):
 
     def _set_progress(self, done, saved):
         self.progress_bar.value = min(done, self.progress_bar.max)
-        self.status_label.text = f"{done}/{len(self.chapters)} — {saved} saved"
+        extra = " (translated)" if self._translate else ""
+        self.status_label.text = f"{done}/{len(self.chapters)} — {saved} saved{extra}"
 
     def _on_done(self, result, error):
         self._done = True

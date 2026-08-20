@@ -1,3 +1,5 @@
+import os
+
 from kivy.clock import Clock
 from kivy.metrics import dp
 from kivy.uix.image import AsyncImage
@@ -46,10 +48,7 @@ class ChapterListScreen(MDScreen):
 
         self.topbar = self.ids.topbar
         self.topbar.on_back = self._left_action
-        self.topbar.set_actions([
-            ("select-multiple", self._toggle_select_mode),
-            ("dots-vertical", self._open_overflow),
-        ])
+        self._bookmark_disabled = False
 
         self.title_label = self.ids.title_label
         self.info_label = self.ids.info_label
@@ -77,7 +76,25 @@ class ChapterListScreen(MDScreen):
     def _rebuild(self):
         self._base_info = f"Chapters: 1-{len(self.chapters)}"
         self.title_label.text = self._novel_title
-        self.info_label.text = self._base_info
+
+        # Build a set of indices for chapters that have a local file on disk.
+        self._downloaded = set()
+        if self.slug:
+            chap_dir = os.path.join("novels", self.slug)
+            if os.path.isdir(chap_dir):
+                entries = set(os.listdir(chap_dir))
+                meta_lang = utils._meta_lang(self.slug)
+                for i, ch in enumerate(self.chapters):
+                    safe = ch["title"].replace("/", "-").replace(" ", "_")
+                    if (f"{safe}.txt" in entries
+                            or (meta_lang
+                                and f"{safe}_{meta_lang}.txt" in entries)):
+                        self._downloaded.add(i)
+            self.info_label.text = (
+                self._base_info
+                + f" · {len(self._downloaded)} downloaded")
+        else:
+            self.info_label.text = self._base_info
         if self._cover:
             utils.set_image_url(self.cover_img, self._cover)
             self.cover_img.opacity = 1
@@ -105,6 +122,19 @@ class ChapterListScreen(MDScreen):
         if n:
             self.download_btn.text = f"Download selected ({n})"
 
+        # Build topbar actions: bookmark (save novel) + select-multiple + overflow.
+        # The bookmark icon shows registered vs not-yet-saved state.
+        raw_slug = self.slug.split(":", 1)[-1] if self.slug else ""
+        registered = bool(self.slug and utils._read_meta(self.slug))
+        bookmark_icon = "bookmark" if registered else "bookmark-plus-outline"
+        actions = [
+            (bookmark_icon, self._save_novel),
+            ("select-multiple", self._toggle_select_mode),
+            ("dots-vertical", self._open_overflow),
+        ]
+        self.topbar.set_actions(actions)
+        self._bookmark_disabled = registered
+
         for i, ch in enumerate(self.chapters[: self._row_limit]):
             self.list_view.add_widget(self._make_row(i, ch))
         self._built = len(self.chapters[: self._row_limit])
@@ -117,6 +147,7 @@ class ChapterListScreen(MDScreen):
     def _make_row(self, i, ch):
         """One chapter row; also stores its chapter index for checkbox sync."""
         seen = self._seen
+        downloaded = self._downloaded
         if self._select_mode:
             prefix = "✓ " if i in seen else "  "
             item = OneLineAvatarIconListItem(
@@ -127,7 +158,6 @@ class ChapterListScreen(MDScreen):
             cbx.bind(on_active=lambda w, val, idx=i: self._toggle_selection(idx, active=val))
             item.add_widget(cbx)
         else:
-            # Seen chapters: check icon + secondary text; unseen stay primary.
             item = OneLineAvatarIconListItem(
                 text=ch["title"],
                 on_release=lambda *_, idx=i: self._open(idx),
@@ -136,6 +166,9 @@ class ChapterListScreen(MDScreen):
                 item.add_widget(IconLeftWidget(
                     icon="check-circle", theme_text_color="Secondary"))
                 item.theme_text_color = "Secondary"
+            elif i in downloaded:
+                item.add_widget(IconLeftWidget(
+                    icon="download-circle", theme_text_color="Secondary"))
             else:
                 item.add_widget(IconLeftWidget(icon="circle-outline"))
         item._idx = i
@@ -239,12 +272,48 @@ class ChapterListScreen(MDScreen):
 
     # ---------- overflow menu ----------
 
+    def _save_novel(self):
+        if self._bookmark_disabled:
+            return
+        if not self.source or not self.slug:
+            return
+        raw = self.slug.split(":", 1)[-1] if ":" in self.slug else self.slug
+        if utils._read_meta(self.slug):
+            MDSnackbar(MDLabel(text="Already in your library.")).open()
+            return
+
+        async def coro():
+            return await utils._track_novel(
+                self.source,
+                {"slug": raw, "title": self._novel_title, "cover": self._cover})
+
+        def on_done(result, error):
+            if error is not None:
+                MDSnackbar(MDLabel(text="Could not add. Check connection.")).open()
+                return
+            self._bookmark_disabled = True
+            self.topbar.set_actions([
+                ("bookmark", self._save_novel),
+                ("select-multiple", self._toggle_select_mode),
+                ("dots-vertical", self._open_overflow),
+            ])
+            MDSnackbar(MDLabel(text="Added to library.")).open()
+            root = MDApp.get_running_app().root
+            if hasattr(root, "homescreen_library_refresh"):
+                root.homescreen_library_refresh()
+
+        async_loop.run(coro(), on_done)
+
     def _open_overflow(self):
+        dialog = getattr(self, "_overflow", None)
+        if dialog is not None:
+            dialog.dismiss()
         rows = MDList()
-        rows.add_widget(OneLineListItem(
-            text="Download all",
-            on_release=lambda *_: self._download_subset(self.chapters),
-        ))
+        if self.chapters:
+            rows.add_widget(OneLineListItem(
+                text="Download…",
+                on_release=lambda *_: self._open_picker(),
+            ))
         meta = utils._read_meta(self.slug) if self.slug else {}
         if meta:
             if meta.get("tracked") and not utils._has_chapters(self.slug):
@@ -337,6 +406,21 @@ class ChapterListScreen(MDScreen):
         MDApp.get_running_app().goto(
             "download_progress",
             chapters=subset,
+            slug=self.slug,
+            source=self.source,
+            title=self._novel_title,
+            total=len(self.chapters),
+        )
+
+    def _open_picker(self):
+        dialog = getattr(self, "_overflow", None)
+        if dialog is not None:
+            dialog.dismiss()
+        if not self.chapters or not self.source or not self.slug:
+            return
+        MDApp.get_running_app().goto(
+            "download_picker",
+            chapters=self.chapters,
             slug=self.slug,
             source=self.source,
             title=self._novel_title,

@@ -19,7 +19,12 @@ from translation import _translate_text
 class ReaderScreen(MDScreen):
     """Read chapters local-first (downloaded files), falling back to the
     source's read_chapter() over the network. Prev/next, translate/revert,
-    and A-/A+ font size controls."""
+    and A-/A+ font size controls.
+
+    When meta.json specifies a "lang", a translated chapter file
+    ({title}_{lang}.txt) takes priority over the English file.  The
+    translate button swaps between the two local copies instantly (no
+    network); online translation is only used when no local copy exists."""
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -30,6 +35,9 @@ class ReaderScreen(MDScreen):
         self._original_text = ""
         self._translated_text = ""
         self._lang = None
+        self._offline_lang = None
+        self._offline_en_path = ""
+        self._offline_tr_path = ""
         self._font_size = 16
         self._busy = False
         self._lang_dialog = None
@@ -63,20 +71,59 @@ class ReaderScreen(MDScreen):
     # ---------- translate toggle ----------
 
     def _toggle_translate(self):
-        if self._translated_text:
+        if self._translated_text and not self._offline_lang:
+            self._revert()
+        elif self._offline_lang and self._offline_en_path:
+            self._swap_offline()
+        elif self._offline_lang and not self._offline_en_path:
+            self._notify("No English copy to swap to.")
+        elif self._translated_text and self._offline_lang:
             self._revert()
         else:
             self._pick_language()
 
+    def _swap_offline(self):
+        """Swap between translated and English local files."""
+        if self._offline_lang:
+            # Currently showing translated → swap to English
+            try:
+                with open(self._offline_en_path, encoding="utf-8") as f:
+                    content = f.read()
+                self._translated_text = ""
+                self._offline_lang = None
+                self._lang = None
+                self.translate_btn.icon = "translate"
+                self._show_text(content)
+            except Exception:
+                self._notify("Could not read English copy.")
+        else:
+            # Currently showing English → swap to translated
+            if self._offline_tr_path:
+                try:
+                    with open(self._offline_tr_path, encoding="utf-8") as f:
+                        content = f.read()
+                    meta_lang = utils._meta_lang(self.slug) \
+                        if self.slug else None
+                    self._translated_text = content
+                    self._offline_lang = meta_lang
+                    self._lang = meta_lang
+                    self.translate_btn.icon = "undo-variant"
+                    self._show_text(content, lang=meta_lang)
+                except Exception:
+                    self._notify("Could not read translated copy.")
+
     # ---------- goto() contract ----------
 
-    def load(self, chapters=None, slug="", source=None, title="Reader", start=0, **kwargs):
+    def load(self, chapters=None, slug="", source=None, title="Reader",
+             start=0, **kwargs):
         self.slug = slug
         self.source = source
-        self.chapters = chapters if chapters is not None else utils._local_chapters(slug)
+        self.chapters = chapters if chapters is not None else \
+            utils._local_chapters(slug)
         if not self.chapters:
             self._notify("No chapters to read.")
-            Clock.schedule_once(lambda dt: MDApp.get_running_app().back(), 0.3)
+            Clock.schedule_once(
+                lambda dt: MDApp.get_running_app().back(), 0.3)
             return
         start = max(0, min(start, len(self.chapters) - 1))
         self._load_chapter(start)
@@ -90,18 +137,48 @@ class ReaderScreen(MDScreen):
         self._original_text = ""
         self._translated_text = ""
         self._lang = None
+        self._offline_lang = None
+        self._offline_en_path = ""
+        self._offline_tr_path = ""
         self.translate_btn.icon = "translate"
         self._set_busy(True)
         self.title_label.text = self.chapters[idx]["title"]
         self.counter.text = f"{idx + 1}/{len(self.chapters)}"
 
         ch = self.chapters[idx]
-        safe_title = ch["title"].replace("/", "-").replace(" ", "_") + ".txt"
-        local_path = os.path.join("novels", self.slug, safe_title) if self.slug else None
+        safe = ch["title"].replace("/", "-").replace(" ", "_")
+        en_name = safe + ".txt"
+        en_path = os.path.join("novels", self.slug, en_name) \
+            if self.slug else None
 
-        if local_path and os.path.exists(local_path):
+        # Determine meta.json translation language.
+        meta_lang = utils._meta_lang(self.slug) if self.slug else None
+        tr_path = utils._translated_path(ch["title"], self.slug, meta_lang) \
+            if meta_lang and self.slug else ""
+
+        self._offline_en_path = en_path if en_path and os.path.exists(en_path) else ""
+        self._offline_tr_path = tr_path if tr_path and os.path.exists(tr_path) else ""
+
+        # Priority: translated → English → network
+        if self._offline_tr_path:
             try:
-                with open(local_path, encoding="utf-8") as f:
+                with open(self._offline_tr_path, encoding="utf-8") as f:
+                    content = f.read()
+                self._set_busy(False)
+                self._offline_lang = meta_lang
+                self._translated_text = content
+                self._lang = meta_lang
+                self.translate_btn.icon = "undo-variant"
+                self._show_text(content, lang=meta_lang)
+                progress.mark_seen(self.slug, idx)
+            except Exception:
+                self._set_busy(False)
+                self._notify("Could not read chapter.")
+            return
+
+        if self._offline_en_path:
+            try:
+                with open(self._offline_en_path, encoding="utf-8") as f:
                     content = f.read()
                 self._set_busy(False)
                 self._original_text = content
@@ -125,16 +202,17 @@ class ReaderScreen(MDScreen):
     def _on_chapter_loaded(self, lines, error):
         self._set_busy(False)
         if error is not None or not lines:
-            self._notify("Failed to load chapter. Check your connection.")
+            self._notify(
+                "Failed to load chapter. Check your connection.")
             return
         self._original_text = "\n\n".join(lines)
         self._show_text(self._original_text)
         progress.mark_seen(self.slug, self.current)
 
-    def _show_text(self, text):
+    def _show_text(self, text, lang=None):
         self.body_label.text = text
-        self.body_label.halign = "left"
-        self.body_label.text_language = ""
+        self.body_label.halign = "right" if lang == "ar" else "left"
+        self.body_label.text_language = lang if lang else ""
         self.scroll.scroll_y = 1
         Clock.schedule_once(lambda dt: self._reflow(), 0)
 
@@ -206,6 +284,16 @@ class ReaderScreen(MDScreen):
         self._translated_text = ""
         self._lang = None
         self.translate_btn.icon = "translate"
+        # If we have an offline English copy, show it; otherwise show
+        # whatever was in _original_text (network fetch).
+        if self._offline_en_path:
+            try:
+                with open(self._offline_en_path, encoding="utf-8") as f:
+                    content = f.read()
+                self._show_text(content)
+                return
+            except Exception:
+                pass
         self._show_text(self._original_text)
 
     # ---------- font size ----------

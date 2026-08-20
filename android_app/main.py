@@ -16,17 +16,14 @@ class NovelFetchApp(MDApp):
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        # KV auto-discovery and #:include resolve relative to the CWD or the
-        # app's own directory, never both across platforms. Pin both the CWD
-        # and kv_file to the real app directory so novelfetch.kv and its
-        # kv/ includes resolve identically on desktop and Android.
-        os.chdir(_APP_DIR)
+        # KV includes (via #:include) and Builder.load_file resolve through
+        # Kivy's resource path, not CWD.  Pin the app dir as a resource root
+        # so kv/ includes find their targets without touching CWD, which must
+        # stay at the launch directory so CWD-relative data paths (novels/)
+        # resolve correctly.
+        from kivy.resources import resource_add_path
+        resource_add_path(_APP_DIR)
         self.kv_file = os.path.join(_APP_DIR, "novelfetch.kv")
-        # Register custom widget classes in the Kivy Factory before novelfetch.kv
-        # loads (run() -> load_kv happens after __init__), so KV rules resolve
-        # them as the real classes instead of dynamic stubs.
-        import screens.browse  # noqa: F401  (Factory.register BrowseSection)
-        import screens.topbar  # noqa: F401  (Factory.register TopBar)
         self.current_source = None
 
     def build(self):
@@ -38,6 +35,11 @@ class NovelFetchApp(MDApp):
         from async_runner import async_loop
         async_loop.start()
 
+        # Register custom widget classes in Factory AFTER any platform
+        # chdir (Android user_data_dir) so that progress.py (imported
+        # transitively) sees the correct working directory.
+        import screens.browse  # noqa: F401  (Factory.register BrowseSection)
+        import screens.topbar  # noqa: F401  (Factory.register TopBar)
         from screens import MainScreen
         return MainScreen()
 

@@ -1,0 +1,57 @@
+<DownloadPickerScreen>:
+    MDBoxLayout:
+        orientation: "vertical"
+
+        TopBar:
+            id: topbar
+            title: "Download"
+            back: True
+
+        ScrollView:
+            always_overscroll: False
+
+            MDBoxLayout:
+                orientation: "vertical"
+                adaptive_height: True
+
+                MDBoxLayout:
+                    orientation: "vertical"
+                    padding: dp(16)
+                    spacing: dp(4)
+                    adaptive_height: True
+
+                    MDLabel:
+                        id: title_label
+                        text: ""
+                        bold: True
+                        font_style: "Subtitle1"
+                        adaptive_height: True
+
+                    MDLabel:
+                        id: summary_label
+                        text: ""
+                        theme_text_color: "Secondary"
+                        font_style: "Caption"
+                        adaptive_height: True
+
+                MDBoxLayout:
+                    size_hint_y: None
+                    height: dp(48)
+                    padding: (dp(16), 0, dp(16), 0)
+
+                    MDFlatButton:
+                        id: lang_btn
+                        text: "Translated to"
+                        theme_text_color: "Secondary"
+                        on_release: root._pick_language()
+
+                    MDLabel:
+                        id: lang_label
+                        text: "Arabic"
+                        bold: True
+                        font_style: "Body1"
+                        halign: "left"
+                        valign: "center"
+
+                MDList:
+                    id: list_view

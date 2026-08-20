@@ -16,6 +16,7 @@ from screens.novel_list import NovelListScreen
 from screens.chapter_list import ChapterListScreen
 from screens.reader import ReaderScreen
 from screens.download_dialog import DownloadProgressScreen
+from screens.download_picker import DownloadPickerScreen
 import screens.topbar  # noqa: F401  — registers TopBar in the Factory for KV
 
 
@@ -49,6 +50,7 @@ class MainScreen(BoxLayout):
         self.manager.add_widget(ChapterListScreen(name="chapter_list"))
         self.manager.add_widget(ReaderScreen(name="reader"))
         self.manager.add_widget(DownloadProgressScreen(name="download_progress"))
+        self.manager.add_widget(DownloadPickerScreen(name="download_picker"))
 
         # Refresh Home whenever the user switches to it in the bottom nav.
         self.nav.bind(on_switch_tabs=self._on_switch_tabs)

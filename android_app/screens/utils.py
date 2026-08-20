@@ -1,4 +1,5 @@
 from sources import REGISTRY
+from progress import LANGUAGES
 import re
 import shutil
 import time
@@ -12,6 +13,17 @@ from kivymd.uix.snackbar import MDSnackbar
 
 from async_runner import async_loop
 
+_LANG_CODES = set(LANGUAGES.values())
+_TRANSL_SUFFIX_RE = re.compile(r"^(.+)_([a-z]{2}(?:-[a-z]{2})?)\.txt$")
+
+
+def _is_translation_file(fname):
+    """Return the lang code if *fname* is a translation file, else None."""
+    m = _TRANSL_SUFFIX_RE.match(fname)
+    if m and m.group(2) in _LANG_CODES:
+        return m.group(2)
+    return None
+
 
 def _snack(text):
     """KivyMD 1.2.0 MDSnackbar takes child widgets, not a text kwarg."""
@@ -24,11 +36,15 @@ def _chapter_sort_key(fname):
 
 
 def _local_chapters(slug):
-    """Build a chapter list from the downloaded novels/{slug}/*.txt files."""
+    """Build a chapter list from the downloaded novels/{slug}/*.txt files.
+
+    Translation-suffixed files ({title}_{lang}.txt) are excluded so chapter
+    counts and indices stay canonical."""
     chap_dir = os.path.join("novels", slug)
     if not os.path.isdir(chap_dir):
         return []
-    files = [f for f in os.listdir(chap_dir) if f.endswith(".txt")]
+    files = [f for f in os.listdir(chap_dir)
+             if f.endswith(".txt") and _is_translation_file(f) is None]
     files.sort(key=_chapter_sort_key)
     chapters = []
     for i, f in enumerate(files, 1):
@@ -79,12 +95,26 @@ def _read_meta(slug):
         return {}
 
 
+def _meta_lang(slug):
+    """Return the saved translation language code for a novel, or None."""
+    return _read_meta(slug).get("lang")
+
+
+def _translated_path(chapter_title, slug, lang):
+    """Return the local path for a translated chapter file, or ''."""
+    if not lang:
+        return ""
+    safe = chapter_title.replace("/", "-").replace(" ", "_")
+    return os.path.join("novels", slug, f"{safe}_{lang}.txt")
+
+
 def _has_chapters(slug):
     """True if any downloaded chapter .txt exists under novels/{slug}."""
     path = os.path.join("novels", slug)
     if not os.path.isdir(path):
         return False
-    return any(name.endswith(".txt") for name in os.listdir(path))
+    return any(name.endswith(".txt") and _is_translation_file(name) is None
+               for name in os.listdir(path))
 
 
 def _is_tracked(slug):
@@ -278,27 +308,67 @@ def set_image_url(img, url):
 
 
 async def _download_novel(source, qualified_slug, chapters, title,
-                          total=None, progress_cb=None):
-    """Save every chapter via source.save_chapter, download the cover, and
-    write meta.json with the real title + cover file.
+                          total=None, progress_cb=None,
+                          translate=False, lang=""):
+    """Save every chapter via source.save_chapter (or read+translate when
+    *translate* is True), download the cover, and write meta.json with the
+    real title + cover file.
+
+    When *translate* is True, each chapter is fetched via source.read_chapter,
+    translated with _translate_text(text, lang), and saved as
+    {safe_title}_{lang}.txt — the plain English file is skipped so the
+    translation is the only local copy.
 
     Returns (saved, failed): 'failed' counts chapters that could not be
     fetched, so callers can tell a network failure apart from 'already saved'.
     total: full novel chapter count for meta.json (so a partial download does
     not misreport the library size). progress_cb(done, saved) is invoked after
     each chapter is processed."""
+    from translation import _translate_text
+    import asyncio
+    sem = asyncio.Semaphore(4)
     saved = 0
     failed = 0
     for i, ch in enumerate(chapters):
         safe_title = ch["title"].replace("/", "-").replace(" ", "_")
-        path = os.path.join("novels", qualified_slug, safe_title + ".txt")
+        if translate:
+            path = os.path.join("novels", qualified_slug,
+                                f"{safe_title}_{lang}.txt")
+        else:
+            path = os.path.join("novels", qualified_slug,
+                                safe_title + ".txt")
         if os.path.exists(path):
+            if progress_cb is not None:
+                progress_cb(i + 1, saved)
             continue
         try:
-            if await source.save_chapter(ch["url"], ch["title"], qualified_slug):
-                saved += 1
-            else:
-                failed += 1
+            async with sem:
+                if translate:
+                    lines = await source.read_chapter(ch["url"])
+                    if not lines:
+                        failed += 1
+                        if progress_cb is not None:
+                            progress_cb(i + 1, saved)
+                        continue
+                    text = "\n\n".join(lines)
+                    translated = await asyncio.to_thread(
+                        _translate_text, text, lang)
+                    if not translated:
+                        failed += 1
+                        if progress_cb is not None:
+                            progress_cb(i + 1, saved)
+                        continue
+                    os.makedirs(os.path.join("novels", qualified_slug),
+                                exist_ok=True)
+                    with open(path, "w", encoding="utf-8") as f:
+                        f.write(translated)
+                    saved += 1
+                else:
+                    if await source.save_chapter(ch["url"], ch["title"],
+                                                 qualified_slug):
+                        saved += 1
+                    else:
+                        failed += 1
         except Exception:
             failed += 1
         if progress_cb is not None:
@@ -308,9 +378,15 @@ async def _download_novel(source, qualified_slug, chapters, title,
 
     try:
         os.makedirs(os.path.join("novels", qualified_slug), exist_ok=True)
-        meta = {"title": title, "cover": cover_file, "chapters": total or len(chapters)}
+        meta = {"title": title, "cover": cover_file,
+                "chapters": total or len(chapters)}
+        if translate and lang:
+            meta["lang"] = lang
+        # Merge with existing meta (preserves 'tracked' from _track_novel).
+        existing_meta = _read_meta(qualified_slug)
+        existing_meta.update(meta)
         with open(os.path.join("novels", qualified_slug, "meta.json"), "w") as f:
-            json.dump(meta, f)
+            json.dump(existing_meta, f)
     except OSError:
         pass
     return saved, failed
