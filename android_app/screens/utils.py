@@ -213,7 +213,7 @@ def _add_flow(btn, novel, source):
             root.homescreen_library_refresh()
 
     btn.disabled = True
-    async_loop.run(coro(), on_done)
+    async_loop.run(coro(), on_done, timeout=30)
 
 
 async def _save_cover(source, qualified_slug):
@@ -223,11 +223,10 @@ async def _save_cover(source, qualified_slug):
         url = await source.cover_url(raw)
         if not url:
             return ""
-        import httpx
-        async with httpx.AsyncClient(follow_redirects=True, timeout=30) as client:
-            resp = await client.get(url)
-            if resp.status_code != 200:
-                return ""
+        client = _get_http_client()
+        resp = await client.get(url)
+        if resp.status_code != 200:
+            return ""
         ext = url.split("?")[0].rsplit(".", 1)[-1].lower()
         if ext not in ("jpg", "jpeg", "png", "webp"):
             ext = "jpg"
@@ -241,6 +240,16 @@ async def _save_cover(source, qualified_slug):
 
 
 _COVER_CACHE_DIR = os.path.join("novels", ".covers")
+_SHARED_HTTP_CLIENT = None
+
+
+def _get_http_client():
+    """Shared httpx.AsyncClient with a 30s timeout (created once)."""
+    global _SHARED_HTTP_CLIENT
+    if _SHARED_HTTP_CLIENT is None:
+        import httpx
+        _SHARED_HTTP_CLIENT = httpx.AsyncClient(follow_redirects=True, timeout=30)
+    return _SHARED_HTTP_CLIENT
 
 
 def _cover_cache_path(url):
@@ -268,11 +277,10 @@ async def _download_cover(url):
     path = _cover_cache_path(url)
     if not path or (path and os.path.exists(path)):
         return path
-    import httpx
     try:
         os.makedirs(_COVER_CACHE_DIR, exist_ok=True)
-        async with httpx.AsyncClient(follow_redirects=True, timeout=30) as client:
-            resp = await client.get(url)
+        client = _get_http_client()
+        resp = await client.get(url)
         if resp.status_code != 200:
             return ""
         tmp = path + ".tmp"
@@ -297,12 +305,20 @@ def set_image_url(img, url):
         img.source = local
         return
 
+    # Placeholder: opaque surface color while cover downloads.
+    from screens.theme import surface_color
+    img.color = surface_color()
+
     async def coro():
         return await _download_cover(url)
 
     def on_done(path, error):
         if error is None and path:
             img.source = path
+            img.color = [1, 1, 1, 1]
+            # Fade-in animation.
+            from kivy.animation import Animation
+            Animation(opacity=1, duration=0.3).start(img)
 
     async_loop.run(coro(), on_done)
 
@@ -441,4 +457,4 @@ def _open_chapters_for(novel, source, set_loading=None, fallback=None):
             )
 
     _set(True)
-    async_loop.run(coro(), on_done)
+    async_loop.run(coro(), on_done, timeout=30)

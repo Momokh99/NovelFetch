@@ -18,6 +18,9 @@
                 bold: True
                 font_style: "Subtitle1"
                 adaptive_height: True
+                shorten: True
+                shorten_from: "right"
+                max_lines: 1
 
             MDProgressBar:
                 id: progress_bar
@@ -29,3 +32,13 @@
                 text: ""
                 theme_text_color: "Secondary"
                 adaptive_height: True
+
+            MDRaisedButton:
+                id: cancel_btn
+                text: "Cancel"
+                icon: "close"
+                size_hint: (1, None)
+                height: "40dp"
+                opacity: 0
+                disabled: True
+                on_release: root._cancel()

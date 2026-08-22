@@ -62,6 +62,7 @@ class ChapterListScreen(MDScreen):
         self._scroll_view = self.ids.scroll_view
         self._scroll_view.bind(scroll_y=self._on_scroll)
         self.list_view = self.ids.list_view
+        self.loading_bar = self.ids.loading_bar
         self._rebuild()
 
     def load(self, chapters, slug="", source=None, title="Chapter list", cover=""):
@@ -302,7 +303,7 @@ class ChapterListScreen(MDScreen):
             if hasattr(root, "homescreen_library_refresh"):
                 root.homescreen_library_refresh()
 
-        async_loop.run(coro(), on_done)
+        async_loop.run(coro(), on_done, timeout=30)
 
     def _open_overflow(self):
         dialog = getattr(self, "_overflow", None)
@@ -348,9 +349,11 @@ class ChapterListScreen(MDScreen):
             from epub import _export_epub
             return await _export_epub(self.slug, source)
 
+        self.loading_bar.opacity = 1
         async_loop.run(coro(), self._on_export_done)
 
     def _on_export_done(self, path, error):
+        self.loading_bar.opacity = 0
         if error is not None:
             self._notify("Export failed.")
         elif path:

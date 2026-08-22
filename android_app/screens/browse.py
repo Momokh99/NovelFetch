@@ -1,9 +1,11 @@
 from kivy.factory import Factory
+from kivy.metrics import dp
 from kivymd.app import MDApp
 from kivymd.uix.boxlayout import MDBoxLayout
 from kivymd.uix.dialog import MDDialog
 from kivymd.uix.label import MDLabel
 from kivymd.uix.list import MDList, OneLineListItem
+from kivymd.uix.progressbar import MDProgressBar
 from kivymd.uix.snackbar import MDSnackbar
 
 from async_runner import async_loop
@@ -31,6 +33,10 @@ class BrowseSection(MDBoxLayout):
         self.browse_list.add_widget(OneLineListItem(
             text="Genres", on_release=lambda *_: self.open_genres()))
         self.add_widget(self.browse_list)
+        self.progress_bar = MDProgressBar(
+            indeterminate=True, opacity=0,
+            size_hint_y=None, height=dp(4))
+        self.add_widget(self.progress_bar)
 
     # ---------- browse ----------
 
@@ -47,7 +53,9 @@ class BrowseSection(MDBoxLayout):
             return source.extract_novel_rows(soup)
 
         self._set_busy(True)
-        async_loop.run(coro(), lambda res, err, k=key: self._on_done(res, err, BROWSE[k]))
+        async_loop.run(
+            coro(), lambda res, err, k=key: self._on_done(res, err, BROWSE[k]),
+            timeout=30)
 
     # ---------- genres ----------
 
@@ -82,7 +90,8 @@ class BrowseSection(MDBoxLayout):
             return await source.browse_genre(genre_slug)
 
         self._set_busy(True)
-        async_loop.run(coro(), lambda res, err: self._on_done(res, err, "Genres"))
+        async_loop.run(coro(), lambda res, err: self._on_done(res, err, "Genres"),
+                       timeout=30)
 
 # ---------- result routing ----------
 
@@ -108,6 +117,7 @@ class BrowseSection(MDBoxLayout):
     def _set_busy(self, busy):
         self._busy = busy
         self.browse_list.disabled = busy   # rows ignore taps while fetching
+        self.progress_bar.opacity = 1 if busy else 0
 
     def _notify(self, text):
         MDSnackbar(MDLabel(text=text)).open()

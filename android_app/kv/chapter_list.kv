@@ -18,8 +18,8 @@
                 MDBoxLayout:
                     orientation: "horizontal"
                     adaptive_height: False
-                    padding: "16dp"
-                    spacing: "16dp"
+                    padding: theme.PAGE_PAD
+                    spacing: theme.PAGE_PAD
                     size_hint_y: None
                     height: "120dp"
 
@@ -35,6 +35,9 @@
                             font_style: "Subtitle1"
                             size_hint_y: None
                             height: "28dp"
+                            shorten: True
+                            shorten_from: "right"
+                            max_lines: 2
 
                         MDLabel:
                             id: info_label
@@ -51,6 +54,13 @@
                         width: "90dp"
                         keep_ratio: True
                         allow_stretch: True
+
+                MDProgressBar:
+                    id: loading_bar
+                    indeterminate: True
+                    opacity: 0
+                    size_hint_y: None
+                    height: "4dp"
 
                 MDRaisedButton:
                     id: continue_btn

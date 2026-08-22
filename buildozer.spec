@@ -35,7 +35,7 @@ source.include_exts = py,png,jpg,kv,atlas,gif,ttf
 source.exclude_exts = spec
 
 # (list) List of directory to exclude (let empty to not exclude anything)
-source.exclude_dirs = tests, bin, android_env, .git, .buildozer, .venv
+source.exclude_dirs = tests, bin, android_env, .git, .buildozer, .venv, screens, novels, venv, that, see, system, myenv, can
 
 # (list) List of exclusions using pattern matching
 #source.exclude_patterns = license,images/*/*.jpg
@@ -50,7 +50,7 @@ version = 0.1
 # (list) Application requirements
 # curl_cffi is deliberately omitted: it is a compiled extension with no p4a
 # recipe; sources/scriblehub.py imports it lazily and falls back to httpx.
-requirements = python3,kivy==2.3.1,kivymd==1.2.0,httpx,beautifulsoup4,deep-translator,EbookLib,requests,idna,anyio,sniffio,certifi,charset-normalizer
+requirements = python3,kivy==2.3.1,kivymd==1.2.0,httpx,beautifulsoup4,deep-translator,EbookLib,requests,idna,anyio,sniffio,certifi,charset-normalizer,arabic-reshaper,python-bidi
 
 # (str) Custom source folders for requirements
 # (Sets custom source for any requirements with recipes)
@@ -60,7 +60,7 @@ requirements = python3,kivy==2.3.1,kivymd==1.2.0,httpx,beautifulsoup4,deep-trans
 #presplash.filename = %(source.dir)s/data/presplash.png
 
 # (str) Icon of the application
-#icon.filename = %(source.dir)s/data/icon.png
+icon.filename = %(source.dir)s/android_app/data/icon.png
 
 # (str) Supported orientation
 orientation = portrait
@@ -109,7 +109,7 @@ android.enable_androidx = True
 #android.manifest.orientation = fullSensor
 
 # (bool) Indicate whether the screen should stay on
-#android.wakelock = False
+android.wakelock = True
 
 # (list) Android application meta-data to set (key=value format)
 #android.meta_data =
@@ -118,10 +118,10 @@ android.enable_androidx = True
 #android.prefix =
 
 # (list) Permissions
-android.permissions = INTERNET,ACCESS_NETWORK_STATE
+android.permissions = INTERNET,ACCESS_NETWORK_STATE,WAKE_LOCK
 
 # (int) Target Android API, should be as high as possible.
-android.api = 33
+android.api = 34
 
 # (int) Minimum API your APK will support.
 android.minapi = 21
@@ -174,7 +174,7 @@ android.minapi = 21
 
 # (bool) Indicate whether the screen should stay on
 # Don't forget to add the WAKE_LOCK permission if you set this to True
-#android.wakelock = False
+android.wakelock = True
 
 # (str) Path to a custom source file that will be used instead of the standard
 # Android.py bootstrap

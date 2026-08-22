@@ -70,7 +70,9 @@ class ProgressTracker:
     def get_last(self, slug):
         with self._lock:
             entry = self._data.get(slug)
-            return entry["last"] if entry else None
+            # .get: clear_history() strips "last"/"last_time" but keeps the
+            # entry (seen marks survive); a bare index would KeyError there.
+            return entry.get("last") if entry else None
 
     def get_seen(self, slug):
         with self._lock:
@@ -87,6 +89,16 @@ class ProgressTracker:
             ]
         rows.sort(key=lambda r: int(r["last_time"]), reverse=True)
         return rows
+
+    def clear_history(self):
+        """Remove all reading history (last-chapter + timestamps) but keep
+        progress marks and tracking so novels stay in the library."""
+        with self._lock:
+            for v in self._data.values():
+                if isinstance(v, dict):
+                    v.pop("last", None)
+                    v.pop("last_time", None)
+            self._dirty = True
 
     def remove(self, slug):
         """Forget a novel entirely (e.g. when its folder is deleted)."""

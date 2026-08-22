@@ -13,6 +13,7 @@ from kivymd.uix.screen import MDScreen
 from kivymd.uix.snackbar import MDSnackbar
 
 from progress import progress, _scan_library
+from async_runner import async_loop
 from sources import REGISTRY
 
 PALETTES = [
@@ -53,9 +54,19 @@ class SettingsTab(MDScreen):
         app = MDApp.get_running_app()
         self.theme_switch.active = app.theme_cls.theme_style == "Dark"
         self.palette_row.text = f"Primary color: {app.theme_cls.primary_palette}"
-        novels = _scan_library()
-        total = sum(n["count"] for n in novels)
-        self.library_info.text = f"{len(novels)} novels · {total} files"
+
+        async def coro():
+            novels = _scan_library()
+            total = sum(n["count"] for n in novels)
+            return len(novels), total
+
+        def on_done(result, error):
+            if error is not None:
+                return
+            count, total = result
+            self.library_info.text = f"{count} novels · {total} files"
+
+        async_loop.run(coro(), on_done, timeout=10)
 
     # ---------- appearance ----------
 
@@ -64,6 +75,8 @@ class SettingsTab(MDScreen):
         if self.theme_switch.active == (app.theme_cls.theme_style == "Dark"):
             return  # programmatic sync from _refresh(), not a user toggle
         app.theme_cls.theme_style = "Dark" if self.theme_switch.active else "Light"
+        from screens.app_settings import save_settings
+        save_settings(theme_style=app.theme_cls.theme_style)
         self._notify("Dark theme" if self.theme_switch.active else "Light theme")
 
     def _open_palette(self):
@@ -80,6 +93,8 @@ class SettingsTab(MDScreen):
         if self._palette_dialog is not None:
             self._palette_dialog.dismiss()
         MDApp.get_running_app().theme_cls.primary_palette = color
+        from screens.app_settings import save_settings
+        save_settings(primary_palette=color)
         self._refresh()
         self._notify(f"Primary color: {color}")
 

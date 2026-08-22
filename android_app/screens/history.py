@@ -10,6 +10,7 @@ from kivymd.uix.label import MDLabel
 from kivymd.uix.screen import MDScreen
 
 from progress import _scan_library, progress
+from async_runner import async_loop
 from screens import utils, theme
 from screens.novel_list import _TapCard
 
@@ -40,7 +41,8 @@ class HistoryTab(MDScreen):
         super().__init__(**kwargs)
         # Widget tree lives in kv/history.kv; alias the runtime-touched nodes.
         self.topbar = self.ids.topbar
-        self.empty_label = self.ids.empty_label
+        self.topbar.set_actions([("delete", self._clear_history)])
+        self.empty_box = self.ids.empty_box
         self.list_view = self.ids.list_view
 
         # Populate on first frame (after on_start sets up sources), like Home.
@@ -51,16 +53,33 @@ class HistoryTab(MDScreen):
 
     def refresh(self):
         self.list_view.clear_widgets()
-        history = progress.get_history()
-        if not history:
-            self.empty_label.text = "No reading history yet."
-            return
-        self.empty_label.text = ""
-        titles = {n["slug"]: n["title"] for n in _scan_library()}
-        for h in history:
-            slug = h["slug"]
-            title = self._title_for(slug, titles)
-            self.list_view.add_widget(self._make_row(slug, title, h))
+
+        async def coro():
+            history = progress.get_history()
+            titles = {n["slug"]: n["title"] for n in _scan_library()}
+            return history, titles
+
+        def on_done(result, error):
+            if error is not None:
+                return
+            history, titles = result
+            if not history:
+                self.empty_box.opacity = 1
+                self.empty_box.height = self.empty_box.minimum_height
+                return
+            self.empty_box.opacity = 0
+            self.empty_box.height = 0
+            for h in history:
+                slug = h["slug"]
+                title = self._title_for(slug, titles)
+                self.list_view.add_widget(self._make_row(slug, title, h))
+
+        async_loop.run(coro(), on_done, timeout=10)
+
+    def _clear_history(self):
+        progress.clear_history()
+        self.refresh()
+        utils._snack("History cleared")
 
     def _title_for(self, slug, titles):
         meta = utils._read_meta(slug)
@@ -85,7 +104,8 @@ class HistoryTab(MDScreen):
         texts = MDBoxLayout(orientation="vertical", size_hint_y=1, spacing="2dp")
         texts.add_widget(MDLabel(
             text=title, bold=True,
-            font_style="Subtitle1", size_hint_y=None, height="24dp"))
+            font_style="Subtitle1", size_hint_y=None, height="24dp",
+            shorten=True, shorten_from="right", max_lines=1))
         texts.add_widget(MDLabel(
             text=f"Ch. {h['last'] + 1} · {_time_ago(h['last_time'])}",
             theme_text_color="Secondary",

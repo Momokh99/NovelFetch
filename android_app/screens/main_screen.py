@@ -1,6 +1,6 @@
 from kivy.core.window import Window
 from kivy.uix.boxlayout import BoxLayout
-from kivy.uix.screenmanager import Screen, ScreenManager
+from kivy.uix.screenmanager import Screen, ScreenManager, SlideTransition
 from kivymd.app import MDApp
 from kivymd.uix.bottomnavigation import (
     MDBottomNavigation,
@@ -84,6 +84,7 @@ class MainScreen(BoxLayout):
         screen = self.manager.get_screen(name)
         if hasattr(screen, "load"):
             screen.load(**kwargs)
+        self.manager.transition = SlideTransition(direction="left")
         self.manager.current = name
 
     def back(self):
@@ -92,6 +93,7 @@ class MainScreen(BoxLayout):
         if target == "tabs":
             # Returning Home: re-scan so progress/downloads show immediately.
             self.home_tab.refresh_library()
+        self.manager.transition = SlideTransition(direction="right")
         self.manager.current = target
 
     def homescreen_library_refresh(self):

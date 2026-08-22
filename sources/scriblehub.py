@@ -35,11 +35,13 @@ class ScribbleHubSource(Source):
             if data:
                 resp = await asyncio.to_thread(
                     lambda: httpx.post(url, data=data, follow_redirects=True,
-                                       headers=ScribbleHubSource._headers))
+                                       headers=ScribbleHubSource._headers,
+                                       timeout=30))
             else:
                 resp = await asyncio.to_thread(
                     lambda: httpx.get(url, follow_redirects=True,
-                                      headers=ScribbleHubSource._headers))
+                                      headers=ScribbleHubSource._headers,
+                                      timeout=30))
             if resp.status_code in (403, 429) or "Just a moment" in resp.text:
                 self._blocked = True
             return resp

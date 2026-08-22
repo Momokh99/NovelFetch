@@ -1,3 +1,5 @@
+#:import theme screens.theme
+
 <ReaderScreen>:
     MDBoxLayout:
         orientation: "vertical"
@@ -14,7 +16,7 @@
                 text: ""
                 size_hint_y: None
                 adaptive_height: True
-                padding: ("16dp", "16dp")
+                padding: (theme.PAGE_PAD, theme.PAGE_PAD)
 
         MDBoxLayout:
             id: bottom_divider

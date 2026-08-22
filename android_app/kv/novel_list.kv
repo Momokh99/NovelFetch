@@ -7,7 +7,36 @@
             title: "Results"
             back: True
 
+        MDBoxLayout:
+            id: empty_box
+            orientation: "vertical"
+            size_hint_y: None
+            height: 0
+            padding: dp(16)
+            spacing: dp(4)
+
+            MDIcon:
+                icon: "book-search"
+                halign: "center"
+                font_size: "56dp"
+                theme_text_color: "Secondary"
+
+            MDLabel:
+                id: empty_label
+                text: "No results found"
+                halign: "center"
+                bold: True
+                adaptive_height: True
+
+            MDLabel:
+                text: "Try a different search or source."
+                halign: "center"
+                theme_text_color: "Secondary"
+                font_style: "Caption"
+                adaptive_height: True
+
         ScrollView:
+            id: scroll_view
             always_overscroll: False
 
             MDList:

@@ -18,13 +18,22 @@ from screens.source_picker import open_source_picker
 
 class SearchTab(MDScreen):
     """Browse rows + genres on top, with a live search bar above them.
-    Search results render inline below the bar; browsing hides while shown."""
+    Search results render inline below the bar; browsing hides while shown.
+    Supports pagination: scrolling to the bottom fetches the next page."""
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self._busy = False
         self._debounce = None
         self._clearing = False
+        self._query = ""
+        self._query_source_name = ""
+        self._page = 1
+        self._pages = 1
+        self._load_more_busy = False
+        # Sequence number: bumped on every new search/clear; async responses
+        # carrying an older seq are stale and dropped (superseded searches).
+        self._seq = 0
 
         # Widget tree lives in kv/search_tab.kv; alias the runtime-touched nodes.
         self.topbar = self.ids.topbar
@@ -32,6 +41,8 @@ class SearchTab(MDScreen):
         self.source_btn = self.ids.source_btn
         self.search_field = self.ids.search_field
         self.clear_btn = self.ids.clear_btn
+        self.search_progress = self.ids.search_progress
+        self.scroll_view = self.ids.scroll_view
         self.browse_box = self.ids.browse_box
         self.results_box = self.ids.results_box
         self.results_list = self.ids.results_list
@@ -39,6 +50,17 @@ class SearchTab(MDScreen):
         # current_source is set in App.on_start(), AFTER build(). A zero-delay
         # Clock callback fires on the first frame — after on_start has run.
         Clock.schedule_once(lambda dt: self.refresh_source(), 0)
+
+    def _on_scroll_y(self, scroll_y):
+        if scroll_y >= 0.05 or not self._query or self._busy or self._load_more_busy:
+            return
+        # Ignore bottom-hits while the content fits the viewport: layout
+        # transitions briefly clamp scroll_y to 0, which would otherwise fire
+        # a spurious page-2 fetch right after every result render.
+        vp = getattr(self.scroll_view, "_viewport", None)
+        if vp is None or vp.height <= self.scroll_view.height:
+            return
+        self._load_more()
 
     def _open_source_picker(self):
         open_source_picker()
@@ -69,7 +91,7 @@ class SearchTab(MDScreen):
 
     def _do_search(self):
         query = self.search_field.text.strip()
-        if not query or self._busy:
+        if not query:
             return
         source = MDApp.get_running_app().current_source
         if source is None:
@@ -79,17 +101,31 @@ class SearchTab(MDScreen):
             MDSnackbar(MDLabel(text="Search is not supported for this source.")).open()
             return
 
+        self._seq += 1
+        seq = self._seq
+        self._query = query
+        self._query_source_name = source.name
+        self._page = 1
+        self._pages = 1
+        self._load_more_busy = False
+
         async def coro():
-            novels, _pages = await source.search(query, page=1)
-            return novels
+            novels, pages = await source.search(query, page=1)
+            return novels, pages
 
         self._busy = True
         self.search_field.disabled = True
-        async_loop.run(coro(), lambda res, err, q=query: self._on_done(res, err, q))
+        self.search_progress.opacity = 1
+        async_loop.run(
+            coro(), lambda res, err, s=seq: self._on_first_page(res, err, s),
+            timeout=30)
 
-    def _on_done(self, novels, error, query):
+    def _on_first_page(self, result, error, seq):
+        if seq != self._seq:
+            return  # superseded by a newer search/clear; it owns the UI state
         self._busy = False
         self.search_field.disabled = False
+        self.search_progress.opacity = 0
         source = MDApp.get_running_app().current_source
         blocked = getattr(source, "blocked", False)
         if error is not None:
@@ -98,11 +134,50 @@ class SearchTab(MDScreen):
         elif blocked:
             self._clear_results()
             MDSnackbar(MDLabel(text=f"{source.label} is blocked by anti-bot protection.")).open()
-        elif not novels:
+        elif not result:
             self._clear_results()
             MDSnackbar(MDLabel(text="No novels found.")).open()
         else:
+            novels, pages = result
+            self._pages = pages or 1
             self._show_results(novels)
+
+    def _load_more(self):
+        if self._load_more_busy or self._busy:
+            return
+        if self._page >= self._pages:
+            return
+        source = MDApp.get_running_app().current_source
+        # Pin pagination to the source the query ran on: switching sources
+        # mid-results must never fetch page 2 of the old query from a new one.
+        if source is None or not source.search_supported \
+                or source.name != self._query_source_name:
+            return
+        next_page = self._page + 1
+        self._seq += 1
+        seq = self._seq
+
+        async def coro():
+            novels, pages = await source.search(self._query, page=next_page)
+            return novels, pages
+
+        self._load_more_busy = True
+        self.search_progress.opacity = 1
+        async_loop.run(coro(), lambda res, err, s=seq: self._on_more_done(res, err, s),
+                       timeout=30)
+
+    def _on_more_done(self, result, error, seq):
+        if seq != self._seq:
+            return
+        self._load_more_busy = False
+        self.search_progress.opacity = 0
+        if error is not None or not result:
+            return
+        novels, pages = result
+        self._page += 1
+        self._pages = pages or self._pages
+        for n in novels:
+            self.results_list.add_widget(self._make_row(n))
 
     # ---------- inline results ----------
 
@@ -136,7 +211,8 @@ class SearchTab(MDScreen):
         texts = MDBoxLayout(orientation="vertical", size_hint_y=1, spacing="2dp")
         texts.add_widget(MDLabel(
             text=novel["title"], bold=True,
-            font_style="Subtitle1", size_hint_y=None, height="28dp"))
+            font_style="Subtitle1", size_hint_y=None, height="28dp",
+            shorten=True, shorten_from="right", max_lines=1))
         sub = novel.get("author", "") or ""
         if novel.get("latest"):
             sub += f"  ·  {novel['latest']}"
@@ -172,4 +248,15 @@ class SearchTab(MDScreen):
         self._clearing = True
         self.search_field.text = ""
         self._clearing = False
+        # Invalidate any in-flight search/load-more so its callback is dropped,
+        # and restore the UI state that response would have reset.
+        self._seq += 1
+        self._busy = False
+        self._load_more_busy = False
+        self.search_field.disabled = False
+        self.search_progress.opacity = 0
+        self._query = ""
+        self._query_source_name = ""
+        self._page = 1
+        self._pages = 1
         self._clear_results()

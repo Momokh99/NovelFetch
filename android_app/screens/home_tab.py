@@ -11,6 +11,7 @@ from kivymd.uix.progressbar import MDProgressBar
 from kivymd.uix.screen import MDScreen
 
 from progress import _scan_library, progress
+from async_runner import async_loop
 from screens import utils                    # _get_source helper, meta
 from screens import theme
 from screens.novel_list import _TapCard
@@ -35,9 +36,20 @@ class HomeTab(MDScreen):
     # ---------- library ----------
 
     def refresh_library(self):
-        # _library_entries() walks novels/ synchronously — cheap, thread-safe —
-        # and includes tracked slugs whose files were deleted.
-        novels = utils._library_entries()
+        # Run the disk scan on the async loop to avoid blocking the UI thread
+        # when the library is large (os.listdir + meta reads).
+        async def coro():
+            from screens import utils as u
+            return u._library_entries()
+
+        def on_done(novels, error):
+            if error is not None:
+                return
+            self._build_library(novels)
+
+        async_loop.run(coro(), on_done, timeout=10)
+
+    def _build_library(self, novels):
         self.library_list.clear_widgets()
 
         n_tracked = sum(
@@ -102,7 +114,8 @@ class HomeTab(MDScreen):
             texts = MDBoxLayout(orientation="vertical", size_hint_y=1, spacing="2dp")
             texts.add_widget(MDLabel(
                 text=title, bold=True,
-                font_style="Subtitle1", size_hint_y=None, height="30dp"))
+                font_style="Subtitle1", size_hint_y=None, height="30dp",
+                shorten=True, shorten_from="right", max_lines=1))
             texts.add_widget(MDLabel(
                 text=sub, theme_text_color="Secondary",
                 font_style="Caption", size_hint_y=None, height="18dp"))

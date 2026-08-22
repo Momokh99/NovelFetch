@@ -26,6 +26,7 @@ class NovelListScreen(MDScreen):
 
         self.topbar = self.ids.topbar
         self.list_view = self.ids.list_view
+        self.empty_box = self.ids.empty_box
 
     def load(self, novels, source=None, title="Results"):
         # Populated fresh on every goto("novel_list", ...) call.
@@ -33,6 +34,12 @@ class NovelListScreen(MDScreen):
         self.source = source
         self.topbar.set_title(f"{title} ({len(novels)})" if novels else title)
         self.list_view.clear_widgets()
+        if not novels:
+            self.empty_box.opacity = 1
+            self.empty_box.height = self.empty_box.minimum_height
+        else:
+            self.empty_box.opacity = 0
+            self.empty_box.height = 0
         for n in novels:
             self.list_view.add_widget(self._make_row(n))
 
@@ -56,7 +63,8 @@ class NovelListScreen(MDScreen):
         texts = MDBoxLayout(orientation="vertical", size_hint_y=1, spacing="2dp")
         texts.add_widget(MDLabel(
             text=novel["title"], bold=True,
-            font_style="Subtitle1", size_hint_y=None, height="28dp"))
+            font_style="Subtitle1", size_hint_y=None, height="28dp",
+            shorten=True, shorten_from="right", max_lines=1))
         sub = novel.get("author", "") or ""
         if novel.get("latest"):
             sub += f"  ·  {novel['latest']}"

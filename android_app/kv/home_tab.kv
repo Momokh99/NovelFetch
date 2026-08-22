@@ -1,3 +1,5 @@
+#:import theme screens.theme
+
 <HomeTab>:
     MDBoxLayout:
         orientation: "vertical"
@@ -12,8 +14,8 @@
             MDBoxLayout:
                 orientation: "vertical"
                 adaptive_height: True
-                padding: (dp(16), 0, dp(16), dp(16))
-                spacing: dp(8)
+                padding: (theme.PAGE_PAD, 0, theme.PAGE_PAD, theme.PAGE_PAD)
+                spacing: theme.SECTION_GAP
 
                 MDLabel:
                     text: "My Library"

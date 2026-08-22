@@ -1,3 +1,5 @@
+#:import theme screens.theme
+
 <SearchTab>:
     MDBoxLayout:
         orientation: "vertical"
@@ -7,13 +9,15 @@
             title: "Search"
 
         ScrollView:
+            id: scroll_view
             always_overscroll: False
+            on_scroll_y: root._on_scroll_y(self.scroll_y)
 
             MDBoxLayout:
                 orientation: "vertical"
                 adaptive_height: True
-                padding: (dp(16), 0, dp(16), dp(16))
-                spacing: dp(8)
+                padding: (theme.PAGE_PAD, 0, theme.PAGE_PAD, theme.PAGE_PAD)
+                spacing: theme.SECTION_GAP
 
                 MDBoxLayout:
                     orientation: "horizontal"
@@ -30,6 +34,9 @@
                         height: dp(48)
                         valign: "top"
                         text_size: (None, dp(48))
+                        shorten: True
+                        shorten_from: "right"
+                        max_lines: 1
 
                     MDIconButton:
                         id: source_btn
@@ -58,6 +65,13 @@
                         id: clear_btn
                         icon: "close"
                         on_release: root._clear()
+
+                MDProgressBar:
+                    id: search_progress
+                    indeterminate: True
+                    opacity: 0
+                    size_hint_y: None
+                    height: "4dp"
 
                 MDBoxLayout:
                     id: browse_box

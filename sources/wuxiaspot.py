@@ -115,7 +115,7 @@ class WuxiaSpotSource(Source):
     def parse_slug(self, url: str) -> Optional[str]:
         o = urllib.parse.urlparse(url)
         if o.hostname and "wuxiaspot.com" in o.hostname:
-            path = o.path.rstrip(".html").rstrip("/")
+            path = o.path.removesuffix(".html").rstrip("/")
             parts = path.split("/")
             if "novel" in parts:
                 idx = parts.index("novel")

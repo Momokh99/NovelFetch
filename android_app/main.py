@@ -4,6 +4,8 @@ import sys
 _APP_DIR = os.path.dirname(os.path.abspath(__file__))
 _ROOT = os.path.dirname(_APP_DIR)
 
+if _APP_DIR not in sys.path:
+    sys.path.insert(0, _APP_DIR)
 if _ROOT not in sys.path:
     sys.path.append(_ROOT)
 
@@ -29,8 +31,19 @@ class NovelFetchApp(MDApp):
     def build(self):
         if platform == "android":
             os.chdir(self.user_data_dir)
-        self.theme_cls.theme_style = "Dark"
-        self.theme_cls.primary_palette = "Blue"
+
+        from screens.app_settings import load_settings
+        self._app_settings = load_settings()
+
+        self.theme_cls.theme_style = self._app_settings["theme_style"]
+        self.theme_cls.primary_palette = self._app_settings["primary_palette"]
+
+        if platform == "android":
+            try:
+                from android import wakelock
+                wakelock.acquire("novelfetch_reader")
+            except Exception:
+                pass
 
         from async_runner import async_loop
         async_loop.start()

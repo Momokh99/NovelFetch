@@ -29,7 +29,9 @@ class UpdateTab(MDScreen):
         self.topbar = self.ids.topbar
         self.topbar.set_actions([("refresh", self.refresh)])
         self.info_label = self.ids.info_label
+        self.empty_box = self.ids.empty_box
         self.empty_label = self.ids.empty_label
+        self.empty_sub = self.ids.empty_sub
         self.list_view = self.ids.list_view
 
         # Populate on first frame (after on_start sets up sources), like Home.
@@ -79,13 +81,21 @@ class UpdateTab(MDScreen):
         self.list_view.clear_widgets()
         if error is not None:
             self.info_label.text = ""
-            self.empty_label.text = "Update check failed. Check your connection."
+            self.empty_label.text = "Update check failed"
+            self.empty_sub.text = "Check your connection and try again."
+            self.empty_box.opacity = 1
+            self.empty_box.height = self.empty_box.minimum_height
             return
         self._results = results or []
         if not self._results:
             self.info_label.text = ""
-            self.empty_label.text = "All novels are up to date."
+            self.empty_label.text = "All novels are up to date"
+            self.empty_sub.text = "Tap refresh to check again."
+            self.empty_box.opacity = 1
+            self.empty_box.height = self.empty_box.minimum_height
             return
+        self.empty_box.opacity = 0
+        self.empty_box.height = 0
         self.info_label.text = f"{len(self._results)} novel(s) with new chapters"
         for r in self._results:
             self.list_view.add_widget(self._make_row(r))
@@ -110,7 +120,8 @@ class UpdateTab(MDScreen):
         texts = MDBoxLayout(orientation="vertical", size_hint_y=1, spacing="2dp")
         texts.add_widget(MDLabel(
             text=res["title"], bold=True,
-            font_style="Subtitle1", size_hint_y=None, height="24dp"))
+            font_style="Subtitle1", size_hint_y=None, height="24dp",
+            shorten=True, shorten_from="right", max_lines=1))
         texts.add_widget(MDLabel(
             text=f"{res['new']} new chapter(s)", theme_text_color="Secondary",
             font_style="Caption", size_hint_y=None, height="18dp"))

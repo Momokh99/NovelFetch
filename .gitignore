@@ -2,6 +2,12 @@
 myenv/
 .myvenv/
 android_env/
+venv/
+that/
+see/
+system/
+can/
+#/
 
 # Python cache
 __pycache__/
@@ -21,3 +27,7 @@ android_app/novels/
 .buildozer/
 android_app/.buildozer/
 bin/
+
+# Local user settings
+app_settings.json
+

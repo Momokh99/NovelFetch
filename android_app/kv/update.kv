@@ -1,3 +1,5 @@
+#:import theme screens.theme
+
 <UpdateTab>:
     MDBoxLayout:
         orientation: "vertical"
@@ -12,8 +14,8 @@
             MDBoxLayout:
                 orientation: "vertical"
                 adaptive_height: True
-                padding: (dp(16), 0, dp(16), dp(16))
-                spacing: dp(8)
+                padding: (theme.PAGE_PAD, 0, theme.PAGE_PAD, theme.PAGE_PAD)
+                spacing: theme.SECTION_GAP
 
                 MDLabel:
                     id: info_label
@@ -22,12 +24,34 @@
                     font_style: "Caption"
                     adaptive_height: True
 
-                MDLabel:
-                    id: empty_label
-                    text: ""
-                    halign: "center"
-                    bold: True
-                    adaptive_height: True
+                MDBoxLayout:
+                    id: empty_box
+                    orientation: "vertical"
+                    size_hint_y: None
+                    height: 0
+                    padding: dp(16)
+                    spacing: dp(4)
+
+                    MDIcon:
+                        icon: "update"
+                        halign: "center"
+                        font_size: "56dp"
+                        theme_text_color: "Secondary"
+
+                    MDLabel:
+                        id: empty_label
+                        text: ""
+                        halign: "center"
+                        bold: True
+                        adaptive_height: True
+
+                    MDLabel:
+                        id: empty_sub
+                        text: ""
+                        halign: "center"
+                        theme_text_color: "Secondary"
+                        font_style: "Caption"
+                        adaptive_height: True
 
                 MDList:
                     id: list_view
