@@ -37,6 +37,40 @@
                     IconLeftWidget:
                         icon: "palette"
 
+                OneLineAvatarIconListItem:
+                    id: read_indicator_row
+                    text: "Read indicator"
+                    on_release: root._open_read_indicator()
+                    IconLeftWidget:
+                        icon: "progress-check"
+
+                MDLabel:
+                    text: "Grid"
+                    bold: True
+                    adaptive_height: True
+
+                OneLineAvatarIconListItem:
+                    id: grid_size_row
+                    text: "Card grid size"
+                    on_release: root._open_grid_size()
+                    IconLeftWidget:
+                        icon: "view-comfy"
+
+                OneLineAvatarIconListItem:
+                    id: home_layout_row
+                    text: "Home layout"
+                    on_release: root._open_home_layout()
+                    IconLeftWidget:
+                        icon: "view-dashboard"
+
+                OneLineAvatarIconListItem:
+                    text: "Show continue reading"
+                    IconLeftWidget:
+                        icon: "bookmark-multiple"
+                    MDSwitch:
+                        id: continue_reading_switch
+                        on_active: root._toggle_continue_reading()
+
                 MDLabel:
                     text: "Library"
                     bold: True

@@ -95,6 +95,28 @@ def _wrap_rtl_lines(reshaped_text, measure, space_w, avail):
     return out
 
 
+# A single Kivy Label renders into ONE OpenGL texture and GPUs cap
+# texture size (4096-16384px depending on device).  A full chapter
+# wrapped into one label exceeds that and renders black, so text is
+# split into stacked chunk labels whose textures stay below this.
+_MAX_CHUNK_PX = 2500
+
+
+def lines_per_chunk(line_h, cap=_MAX_CHUNK_PX):
+    """Lines per chunk so one chunk's texture stays <= cap px tall."""
+    if line_h <= 0:
+        return 1
+    return max(1, int(cap // line_h))
+
+
+def pack_lines_into_chunks(lines, per_chunk):
+    """Join display lines into strings of at most per_chunk lines each."""
+    if per_chunk < 1:
+        per_chunk = 1
+    return ["\n".join(lines[i:i + per_chunk])
+            for i in range(0, len(lines), per_chunk)]
+
+
 class ReaderScreen(MDScreen):
     """Read chapters local-first (downloaded files), falling back to the
     source's read_chapter() over the network. Prev/next, translate/revert,
@@ -119,10 +141,11 @@ class ReaderScreen(MDScreen):
         self._offline_tr_path = ""
         self._busy = False
         self._lang_dialog = None
-        self._busy_label = None
         self._raw_text = ""
         self._shown_lang = None
         self._disp_key = None
+        self._font_event = None
+        self._meas_cache = {}
 
         from screens.app_settings import load_settings
         self._font_size = load_settings()["reader_font_size"]
@@ -132,9 +155,8 @@ class ReaderScreen(MDScreen):
         self.title_label = self.header.ids.title_label
 
         self.scroll = self.ids.scroll
-        self.body_label = self.ids.body_label
-        self.body_label.font_size = self._font_size
-        self.body_label.bind(width=lambda *_: self._reflow())
+        self.body_box = self.ids.body_box
+        self.body_box.bind(width=lambda *_: self._reflow())
 
         self.prev_btn = self.ids.prev_btn
         self.prev_btn.bind(on_release=lambda *_: self._prev())
@@ -147,6 +169,7 @@ class ReaderScreen(MDScreen):
         self.translate_btn = self.ids.translate_btn
         self.translate_btn.bind(on_release=lambda *_: self._toggle_translate())
         self.font_size_label = self.ids.font_size_label
+        self.font_size_label.text = str(self._font_size)
         self.counter = self.ids.counter
 
         self.bottom_bar = self.ids.bottom_bar
@@ -212,7 +235,7 @@ class ReaderScreen(MDScreen):
         self.chapters = chapters if chapters is not None else \
             utils._local_chapters(slug)
         if not self.chapters:
-            self.body_label.text = "No chapters to read."
+            self._show_text("No chapters to read.")
             self._notify("No chapters to read.")
             Clock.schedule_once(
                 lambda dt: MDApp.get_running_app().back(), 0.3)
@@ -294,7 +317,7 @@ class ReaderScreen(MDScreen):
     def _on_chapter_loaded(self, lines, error):
         self._set_busy(False)
         if error is not None or not lines:
-            self.body_label.text = (
+            self._show_text(
                 "Could not load chapter.\n\n"
                 "Check your connection and reopen.")
             self._notify(
@@ -307,42 +330,78 @@ class ReaderScreen(MDScreen):
     def _show_text(self, text, lang=None):
         self._raw_text = text
         self._shown_lang = lang
-        label = self.body_label
-        label.halign = "right" if lang == "ar" else "left"
-        label.font_name = _ARABIC_FONT if lang == "ar" else "Roboto"
-        try:
-            label.text = self._display_for_current_width()
-            self._disp_key = (
-                text, lang, label.width, self._font_size)
-        except Exception:
-            # Shaping/wrapping must never leave the page blank.
-            label.text = _strip_control_chars(text)
-            self._disp_key = None
+        self._disp_key = None  # force rebuild
         self.scroll.scroll_y = 1
-        Clock.schedule_once(lambda dt: self._reflow(), 0)
+        self._render_soon()
 
-    def _display_for_current_width(self):
+    # ---------- chunked rendering ----------
+    #
+    # One Label == one GL texture, and GPUs cap texture size (4096px on
+    # many phones).  A whole chapter in one label exceeds the cap and
+    # renders black -- especially right after a font-size change.  The
+    # chapter is therefore wrapped into display lines and packed into
+    # stacked chunk labels whose textures stay well under the cap.
+
+    def _avail_px(self):
+        box = self.body_box
+        try:
+            return box.width - (box.padding[0] + box.padding[-1])
+        except (TypeError, IndexError):
+            return box.width
+
+    def _measurer(self, font_name):
+        key = (font_name, int(self._font_size))
+        meas = self._meas_cache.get(key)
+        if meas is None:
+            meas = CoreLabel(
+                font_name=font_name, font_size=int(self._font_size))
+            self._meas_cache[key] = meas
+        return meas
+
+    def _line_spacing(self):
+        """Pixel distance between two consecutive rendered lines."""
+        ar = self._shown_lang == "ar"
+        meas = self._measurer(_ARABIC_FONT if ar else "Roboto")
+        one = meas.get_extents("Ag")[1]
+        two = meas.get_extents("Ag\nAg")[1]
+        spacing = (two - one) if two > one else 0
+        if spacing <= 0:
+            spacing = max(1.0, one * 1.3)
+        return spacing
+
+    def _display_lines(self):
+        """Final display lines for the current raw text/language/width."""
+        text = _strip_control_chars(self._raw_text)
         if self._shown_lang != "ar":
-            return _strip_control_chars(self._raw_text)
-        return self._prepare_arabic(self._raw_text)
+            return self._wrap_plain(text)
+        return self._arabic_lines(text)
 
-    def _prepare_arabic(self, text):
-        """Reshape + bidi-flip PER LINE after wrapping at the real pixel
-        width.  Applying get_display() to the whole paragraph first makes
-        Kivy wrap the reversed string LTR, which scrambles the line order
-        (text reads bottom-to-top) and breaks words across lines."""
-        text = _strip_control_chars(text)
+    def _wrap_plain(self, text):
+        avail = self._avail_px()
+        if avail <= 0 or not text:
+            return text.split("\n")
+        meas = self._measurer("Roboto")
+        return _wrap_rtl_lines(
+            text,
+            lambda word: meas.get_extents(word)[0],
+            meas.get_extents(" ")[0],
+            avail)
+
+    def _arabic_lines(self, text):
+        """Wrap FIRST at the real pixel width, then bidi-flip per line.
+        Applying get_display() before wrapping makes Kivy wrap the
+        reversed string LTR, which scrambles line order and breaks
+        words across lines."""
         if not _HAS_ARABIC_SHAPING:
-            return text
+            return text.split("\n")
         reshaped = arabic_reshaper.reshape(text)
-        pad = self.body_label.padding
-        avail = self.body_label.width - (pad[0] * 2)
+        avail = self._avail_px()
         if avail <= 0:
-            # Width not laid out yet; fall back to single-line bidi.
+            # Width not laid out yet; flip whole paragraphs.
             # _reflow() re-wraps once the real width is known.
-            return get_display(reshaped, base_dir="R")
-        meas = CoreLabel(
-            font_name=_ARABIC_FONT, font_size=int(self._font_size))
+            return [get_display(p, base_dir="R") if p else p
+                    for p in reshaped.split("\n")]
+        meas = self._measurer(_ARABIC_FONT)
         space_w = meas.get_extents(" ")[0]
         cache = {}
 
@@ -354,23 +413,56 @@ class ReaderScreen(MDScreen):
             return w
 
         lines = _wrap_rtl_lines(reshaped, measure, space_w, avail)
-        return "\n".join(get_display(l, base_dir="R") if l else l for l in lines)
+        return [get_display(l, base_dir="R") if l else l for l in lines]
 
-    def _reflow(self):
-        w = self.body_label.width
+    def _make_chunk_label(self, text):
+        ar = self._shown_lang == "ar"
+        lbl = MDLabel(
+            text=text,
+            font_name=_ARABIC_FONT if ar else "Roboto",
+            font_size=self._font_size,
+            halign="right" if ar else "left",
+        )
+        lbl.size_hint_y = None
+        lbl.text_size = (self._avail_px(), None)
+        lbl.bind(texture_size=lambda inst, sz: setattr(inst, "height", sz[1]))
+        return lbl
+
+    def _render_chunks(self):
+        lines = self._display_lines()
+        per = lines_per_chunk(self._line_spacing())
+        chunks = pack_lines_into_chunks(lines, per) or [""]
+        box = self.body_box
+        box.clear_widgets()
+        for chunk in chunks:
+            box.add_widget(self._make_chunk_label(chunk))
+
+    def _fallback_render(self):
+        """Shaping/layout must never leave the page blank."""
+        box = self.body_box
+        box.clear_widgets()
+        box.add_widget(self._make_chunk_label(
+            _strip_control_chars(self._raw_text)))
+        self._disp_key = None
+
+    def _reflow(self, *_args):
+        w = self.body_box.width
         if w <= 0:
             return
-        self.body_label.text_size = (w, None)
         key = (self._raw_text, self._shown_lang, w, self._font_size)
         if key == self._disp_key:
             return  # already rendered for this exact state
         try:
-            new_text = self._display_for_current_width()
+            self._render_chunks()
         except Exception:
+            self._fallback_render()
             return
         self._disp_key = key
-        if new_text != self.body_label.text:
-            self.body_label.text = new_text
+
+    def _render_soon(self):
+        if self._font_event is not None:
+            self._font_event.cancel()
+        self._font_event = Clock.schedule_once(self._reflow, 0)
 
     # ---------- navigation ----------
 
@@ -446,11 +538,13 @@ class ReaderScreen(MDScreen):
 
     def _font(self, delta):
         self._font_size = min(28, max(14, self._font_size + delta))
-        self.body_label.font_size = self._font_size
         self.font_size_label.text = str(self._font_size)
         from screens.app_settings import save_settings
         save_settings(reader_font_size=self._font_size)
-        Clock.schedule_once(lambda dt: self._reflow(), 0)
+        # Debounce: rapid taps rebuild the chunks only once.
+        if self._font_event is not None:
+            self._font_event.cancel()
+        self._font_event = Clock.schedule_once(self._reflow, 0.15)
 
     # ---------- misc ----------
 

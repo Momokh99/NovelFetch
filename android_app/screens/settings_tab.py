@@ -15,12 +15,55 @@ from kivymd.uix.snackbar import MDSnackbar
 from progress import progress, _scan_library
 from async_runner import async_loop
 from sources import REGISTRY
+from screens.app_settings import load_settings, save_settings
 
 PALETTES = [
     "Red", "Pink", "Purple", "DeepPurple", "Indigo", "Blue", "LightBlue",
     "Cyan", "Teal", "Green", "LightGreen", "Lime", "Yellow", "Amber",
     "Orange", "DeepOrange", "Brown", "Grey", "BlueGrey",
 ]
+
+HOME_LAYOUTS = [
+    ("A", "Cards"),
+    ("B", "List"),
+]
+
+READ_INDICATORS = [
+    ("off", "Off"),
+    ("text", "Text"),
+    ("linear", "Linear bar"),
+    ("percentage", "Percentage"),
+    ("blocks", "Segmented blocks"),
+    ("dots", "Segmented dots"),
+    ("wave", "Wave fill"),
+]
+
+CARD_GRID_SIZES = [
+    ("large", "Large (1 per row)"),
+    ("medium", "Medium (2 per row)"),
+    ("small", "Small (3 per row)"),
+]
+
+
+def _home_layout_label(layout):
+    for key, label in HOME_LAYOUTS:
+        if key == layout:
+            return label
+    return layout
+
+
+def _read_indicator_label(key):
+    for k, label in READ_INDICATORS:
+        if k == key:
+            return label
+    return key
+
+
+def _grid_size_label(key):
+    for k, label in CARD_GRID_SIZES:
+        if k == key:
+            return label
+    return key
 
 
 class SettingsTab(MDScreen):
@@ -32,12 +75,19 @@ class SettingsTab(MDScreen):
         super().__init__(**kwargs)
         self._palette_dialog = None
         self._clear_dialog = None
+        self._layout_dialog = None
+        self._read_indicator_dialog = None
+        self._grid_size_dialog = None
 
         # Widget tree lives in kv/settings_tab.kv; alias the runtime-touched
         # nodes so the rest of this file keeps working unchanged.
         self.topbar = self.ids.topbar
         self.theme_switch = self.ids.theme_switch
         self.palette_row = self.ids.palette_row
+        self.read_indicator_row = self.ids.read_indicator_row
+        self.grid_size_row = self.ids.grid_size_row
+        self.home_layout_row = self.ids.home_layout_row
+        self.continue_reading_switch = self.ids.continue_reading_switch
         self.library_info = self.ids.library_info
         self.about_text = "NovelFetch\nSources: " + ", ".join(
             s.label for s in REGISTRY.values())
@@ -52,8 +102,19 @@ class SettingsTab(MDScreen):
 
     def _refresh(self):
         app = MDApp.get_running_app()
+        if app is None:
+            return
         self.theme_switch.active = app.theme_cls.theme_style == "Dark"
         self.palette_row.text = f"Primary color: {app.theme_cls.primary_palette}"
+        settings = load_settings()
+        self.read_indicator_row.text = \
+            f"Read indicator: {_read_indicator_label(settings.get('read_indicator', 'off'))}"
+        self.grid_size_row.text = \
+            f"Card grid size: {_grid_size_label(settings.get('card_grid_size', 'medium'))}"
+        self.home_layout_row.text = \
+            f"Home layout: {_home_layout_label(settings.get('home_layout', 'A'))}"
+        self.continue_reading_switch.active = \
+            bool(settings.get("show_continue_reading", True))
 
         async def coro():
             novels = _scan_library()
@@ -75,7 +136,6 @@ class SettingsTab(MDScreen):
         if self.theme_switch.active == (app.theme_cls.theme_style == "Dark"):
             return  # programmatic sync from _refresh(), not a user toggle
         app.theme_cls.theme_style = "Dark" if self.theme_switch.active else "Light"
-        from screens.app_settings import save_settings
         save_settings(theme_style=app.theme_cls.theme_style)
         self._notify("Dark theme" if self.theme_switch.active else "Light theme")
 
@@ -93,10 +153,82 @@ class SettingsTab(MDScreen):
         if self._palette_dialog is not None:
             self._palette_dialog.dismiss()
         MDApp.get_running_app().theme_cls.primary_palette = color
-        from screens.app_settings import save_settings
         save_settings(primary_palette=color)
         self._refresh()
         self._notify(f"Primary color: {color}")
+
+    def _open_home_layout(self):
+        rows = MDList()
+        current = load_settings().get("home_layout", "A")
+        for key, label in HOME_LAYOUTS:
+            rows.add_widget(OneLineAvatarIconListItem(
+                text=label + (" ✓" if key == current else ""),
+                on_release=lambda *_, k=key: self._set_home_layout(k)))
+        self._layout_dialog = MDDialog(
+            title="Home layout", type="custom", content_cls=rows)
+        self._layout_dialog.open()
+
+    def _set_home_layout(self, key):
+        if self._layout_dialog is not None:
+            self._layout_dialog.dismiss()
+        save_settings(home_layout=key)
+        self._refresh()
+        app = MDApp.get_running_app()
+        if hasattr(app.root, "homescreen_library_refresh"):
+            app.root.homescreen_library_refresh()
+        self._notify(f"Home layout: {_home_layout_label(key)}")
+
+    def _open_read_indicator(self):
+        rows = MDList()
+        current = load_settings().get("read_indicator", "off")
+        for key, label in READ_INDICATORS:
+            rows.add_widget(OneLineAvatarIconListItem(
+                text=label + (" ✓" if key == current else ""),
+                on_release=lambda *_, k=key: self._set_read_indicator(k)))
+        self._read_indicator_dialog = MDDialog(
+            title="Read indicator", type="custom", content_cls=rows)
+        self._read_indicator_dialog.open()
+
+    def _set_read_indicator(self, key):
+        if self._read_indicator_dialog is not None:
+            self._read_indicator_dialog.dismiss()
+        save_settings(read_indicator=key)
+        self._refresh()
+        app = MDApp.get_running_app()
+        if hasattr(app.root, "homescreen_library_refresh"):
+            app.root.homescreen_library_refresh()
+        self._notify(f"Read indicator: {_read_indicator_label(key)}")
+
+    def _open_grid_size(self):
+        rows = MDList()
+        current = load_settings().get("card_grid_size", "medium")
+        for key, label in CARD_GRID_SIZES:
+            rows.add_widget(OneLineAvatarIconListItem(
+                text=label + (" ✓" if key == current else ""),
+                on_release=lambda *_, k=key: self._set_grid_size(k)))
+        self._grid_size_dialog = MDDialog(
+            title="Card grid size", type="custom", content_cls=rows)
+        self._grid_size_dialog.open()
+
+    def _set_grid_size(self, key):
+        if self._grid_size_dialog is not None:
+            self._grid_size_dialog.dismiss()
+        save_settings(card_grid_size=key)
+        self._refresh()
+        app = MDApp.get_running_app()
+        if hasattr(app.root, "homescreen_library_refresh"):
+            app.root.homescreen_library_refresh()
+        self._notify(f"Card grid: {_grid_size_label(key)}")
+
+    def _toggle_continue_reading(self):
+        app = MDApp.get_running_app()
+        if self.continue_reading_switch.active == load_settings().get("show_continue_reading", True):
+            return  # programmatic sync from _refresh(), not a user toggle
+        save_settings(show_continue_reading=self.continue_reading_switch.active)
+        self._refresh()
+        if hasattr(app.root, "homescreen_library_refresh"):
+            app.root.homescreen_library_refresh()
+        self._notify("Continue reading: on" if self.continue_reading_switch.active else "Continue reading: off")
 
     # ---------- library ----------
 

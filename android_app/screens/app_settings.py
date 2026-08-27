@@ -10,6 +10,10 @@ _DEFAULTS = {
     "theme_style": "Dark",
     "primary_palette": "Blue",
     "reader_font_size": 16,
+    "home_layout": "A",
+    "read_indicator": "off",
+    "card_grid_size": "medium",
+    "show_continue_reading": True,
 }
 
 

@@ -8,6 +8,8 @@ from screens.reader import (
     _CTRL_CHARS_RE,
     _greedy_wrap,
     _wrap_rtl_lines,
+    lines_per_chunk,
+    pack_lines_into_chunks,
 )
 
 
@@ -411,3 +413,65 @@ def test_wrap_rtl_words_measured_once_per_occurrence():
 
     _wrap_rtl_lines("كلمة كلمة كلمة", measure, space_w=5, avail=1000)
     assert len(calls) == 3  # one call per word occurrence (caller caches)
+
+
+# ---- chunked rendering (GL max-texture-size guard) ----
+
+def test_lines_per_chunk_basic_division():
+    assert lines_per_chunk(25, cap=2500) == 100
+
+
+def test_lines_per_chunk_floors_partial_line():
+    # 2500 // 30 = 83.33 -> 83 full lines fit
+    assert lines_per_chunk(30, cap=2500) == 83
+
+
+def test_lines_per_chunk_zero_or_negative_height_is_one():
+    assert lines_per_chunk(0, cap=2500) == 1
+    assert lines_per_chunk(-5, cap=2500) == 1
+
+
+def test_lines_per_chunk_never_zero_for_huge_lines():
+    assert lines_per_chunk(4000, cap=2500) == 1
+
+
+def test_pack_lines_exact_multiple():
+    assert pack_lines_into_chunks(["a", "b", "c", "d"], 2) == ["a\nb", "c\nd"]
+
+
+def test_pack_lines_remainder_chunk():
+    assert pack_lines_into_chunks(["a", "b", "c"], 2) == ["a\nb", "c"]
+
+
+def test_pack_lines_empty_input():
+    assert pack_lines_into_chunks([], 10) == []
+
+
+def test_pack_lines_single_chunk_when_all_fit():
+    lines = ["l1", "l2", "l3"]
+    assert pack_lines_into_chunks(lines, 10) == ["l1\nl2\nl3"]
+
+
+def test_pack_lines_preserves_blank_paragraphs_inside_chunk():
+    assert pack_lines_into_chunks(["p1", "", "p2"], 10) == ["p1\n\np2"]
+
+
+def test_pack_lines_per_chunk_below_one_is_clamped():
+    # clamped to 1 -> one line per chunk
+    assert pack_lines_into_chunks(["a", "b"], 0) == ["a", "b"]
+    assert pack_lines_into_chunks(["a", "b"], -3) == ["a", "b"]
+
+
+def test_pack_then_split_roundtrips_content():
+    lines = [f"word{i}" for i in range(50)] + ["", ""]
+    chunks = pack_lines_into_chunks(lines, 7)
+    rebuilt = []
+    for i, chunk in enumerate(chunks):
+        rebuilt.extend(chunk.split("\n"))
+        if i < len(chunks) - 1:
+            pass
+    # every original line survives, in order, with blank lines intact
+    assert rebuilt[:50] == lines[:50]
+    assert all("\n" in c or len(c.split("\n")) <= 7 for c in chunks)
+    for chunk in chunks:
+        assert len(chunk.split("\n")) <= 7

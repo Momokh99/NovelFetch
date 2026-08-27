@@ -11,12 +11,12 @@
         ScrollView:
             id: scroll
 
-            MDLabel:
-                id: body_label
-                text: ""
-                size_hint_y: None
+            MDBoxLayout:
+                id: body_box
+                orientation: "vertical"
                 adaptive_height: True
                 padding: (theme.PAGE_PAD, theme.PAGE_PAD)
+                spacing: "0dp"
 
         MDBoxLayout:
             id: bottom_divider

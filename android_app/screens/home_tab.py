@@ -1,21 +1,163 @@
+import math
 import os
 
 from kivy.clock import Clock
-from kivy.metrics import dp
+from kivy.metrics import dp, sp
+from kivy.properties import NumericProperty, StringProperty
+from kivy.uix.image import Image
+from kivy.uix.scrollview import ScrollView
 
 from kivymd.app import MDApp
 from kivymd.uix.boxlayout import MDBoxLayout
 from kivymd.uix.fitimage import FitImage
 from kivymd.uix.label import MDIcon, MDLabel
-from kivymd.uix.progressbar import MDProgressBar
 from kivymd.uix.screen import MDScreen
 
-from progress import _scan_library, progress
+from progress import progress
 from async_runner import async_loop
 from screens import utils                    # _get_source helper, meta
 from screens import theme
+from screens.app_settings import load_settings
 from screens.novel_list import _TapCard
 from screens.source_picker import open_source_picker
+
+_GRID_COLS = {"large": 1, "medium": 2, "small": 3}
+
+
+def _count_summary(total, tracked):
+    """'3 novels · 2 tracked' caption text from plain numbers."""
+    text = f"{total} novel{'s' if total != 1 else ''}"
+    if tracked:
+        text += f" · {tracked} tracked"
+    return text
+
+
+def _grid_cols():
+    return _GRID_COLS.get(load_settings().get("card_grid_size", "medium"), 2)
+
+
+class _TapFriendlyHScroll(ScrollView):
+    """Horizontal scroll whose child buttons still receive taps even when the
+    finger is pressed and held still.
+
+    ScrollView classifies a still press as a scroll once ``scroll_timeout``
+    elapses (default 250 ms) and silently swallows the tap on release. Here
+    real scrolling is detected by movement > ``scroll_distance`` instead.
+    """
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.scroll_timeout = 1_000_000
+
+    def on_scroll_stop(self, touch, check_children=True):
+        uid = self._get_uid()
+        ud = touch.ud.get(uid)
+        if ud:
+            dx = ud.get("dx", 0) or 0
+            dy = ud.get("dy", 0) or 0
+            if (ud.get("mode") == "scroll"
+                    and dx < self.scroll_distance
+                    and dy < self.scroll_distance):
+                ud["mode"] = "unknown"
+        return super().on_scroll_stop(touch, check_children=check_children)
+
+
+class _FitCover(FitImage):
+    """FitImage variant that stretches the image to fill the box while
+    keeping rounded-corner clipping via the stencil."""
+
+    def _late_init(self, *args):
+        self._container = Image(
+            source=self.source, mipmap=self.mipmap,
+            size_hint=(1, 1), allow_stretch=True, keep_ratio=False)
+        self.bind(source=self._container.setter("source"))
+        self.add_widget(self._container)
+
+
+class ReadIndicator(MDBoxLayout):
+    """Compact reading-progress indicator drawn with canvas instructions."""
+
+    style = StringProperty("off")
+    frac = NumericProperty(0.0)
+    display_text = StringProperty("")
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self._label = MDLabel(
+            halign="left", valign="middle", font_style="Caption",
+            bold=True, font_size=sp(10), theme_text_color="Secondary")
+        self.add_widget(self._label)
+        self.bind(
+            size=self._redraw, style=self._redraw,
+            frac=self._redraw, display_text=self._redraw)
+        self._redraw()
+
+    def _track(self):
+        return (0.55, 0.55, 0.6, 0.15)
+
+    def _redraw(self, *_):
+        self.canvas.clear()
+        style = self.style
+        if style == "off":
+            self._label.text = ""
+            return
+        app = MDApp.get_running_app()
+        if app is None:
+            prim = (0.13, 0.55, 0.96, 1)
+        else:
+            prim = list(app.theme_cls.primary_color)
+        w, h = self.width, self.height
+        if w <= 0 or h <= 0:
+            return
+        frac = max(0.0, min(1.0, self.frac))
+        if style == "text":
+            self._label.text = self.display_text
+            return
+        self._label.text = ("" if style != "percentage"
+                            else f"{int(round(frac * 100))}%")
+        if style != "percentage":
+            self._label.halign = "left"
+        from kivy.graphics import Color, Ellipse, RoundedRectangle
+        if style == "linear":
+            r = h / 2
+            Color(*self._track())
+            RoundedRectangle(pos=self.pos, size=(w, h), radius=[r] * 4)
+            if frac > 0:
+                Color(*prim)
+                RoundedRectangle(pos=self.pos, size=(w * frac, h),
+                                 radius=[r] * 4)
+        elif style == "percentage":
+            self._label.halign = "center"
+        elif style in ("blocks", "dots"):
+            n = 12
+            gap = dp(2)
+            cw = (w - gap * (n - 1)) / n
+            filled = int(round(frac * n))
+            for i in range(n):
+                x = self.x + i * (cw + gap)
+                if i < filled:
+                    Color(*prim)
+                else:
+                    Color(*self._track())
+                if style == "blocks":
+                    RoundedRectangle(pos=(x, self.y), size=(cw, h),
+                                     radius=[dp(1.5)] * 4)
+                else:
+                    d = max(1.0, min(cw, h) - dp(1))
+                    Ellipse(pos=(x + (cw - d) / 2, self.y + (h - d) / 2),
+                            size=(d, d))
+        elif style == "wave":
+            amp = dp(1.5)
+            base = h * (1 - frac)
+            col_w = 4.0
+            x = self.x
+            while x < self.x + w:
+                t = (x - self.x) / w
+                top = base + amp * math.sin(t * 4 * math.pi)
+                Color(prim[0], prim[1], prim[2], 0.4)
+                RoundedRectangle(pos=(x, self.y + top),
+                                 size=(col_w, h - top), radius=[0] * 4)
+                x += col_w
 
 
 class HomeTab(MDScreen):
@@ -25,9 +167,7 @@ class HomeTab(MDScreen):
         # Widget tree lives in kv/home_tab.kv; alias the runtime-touched nodes.
         self.topbar = self.ids.topbar
         self.topbar.set_actions([("book-open-variant", open_source_picker)])
-        self.library_count = self.ids.library_count
-        self.library_empty = self.ids.library_empty
-        self.library_list = self.ids.library_list
+        self.content_box = self.ids.content_box
 
         # current_source is set in App.on_start(), AFTER build(). A zero-delay
         # Clock callback fires on the first frame — after on_start has run.
@@ -44,105 +184,282 @@ class HomeTab(MDScreen):
 
         def on_done(novels, error):
             if error is not None:
+                import traceback
+                traceback.print_exception(type(error), error, error.__traceback__)
                 return
-            self._build_library(novels)
+            try:
+                self._build_library(novels)
+            except Exception:
+                import traceback
+                traceback.print_exc()
 
         async_loop.run(coro(), on_done, timeout=10)
 
     def _build_library(self, novels):
-        self.library_list.clear_widgets()
+        box = self.content_box
+        box.clear_widgets()
+        if not novels:
+            box.add_widget(self._empty_state())
+            return
+        layout = load_settings().get("home_layout", "A")
+        builder = getattr(self, f"_layout_{layout}", self._layout_A)
+        try:
+            builder(novels)
+        except Exception:
+            # A single bad card shouldn't blank the whole library.
+            import traceback
+            traceback.print_exc()
+            box.clear_widgets()
+            for n in novels:
+                try:
+                    box.add_widget(self._row_card(n))
+                except Exception:
+                    import traceback
+                    traceback.print_exc()
 
+    # ---------- section primitives ----------
+
+    def _section_header(self, text):
+        return MDLabel(
+            text=text, bold=True, adaptive_height=True,
+            size_hint_y=None, padding=(0, dp(4), 0, dp(2)))
+
+    def _count_label(self, novels):
         n_tracked = sum(
             1 for n in novels
-            if utils._is_tracked(n["slug"])
-            and not utils._has_chapters(n["slug"])
+            if utils._is_tracked(n["slug"]) and not utils._has_chapters(n["slug"])
         )
-        if novels:
-            self.library_empty.adaptive_height = False
-            self.library_empty.size_hint_y = None
-            self.library_empty.height = 0
-            self.library_empty.opacity = 0
-            self.library_empty.disabled = True
-            count_text = f"{len(novels)} novel{'s' if len(novels) != 1 else ''}"
-            if n_tracked:
-                count_text += f" · {n_tracked} tracked"
-            self.library_count.text = count_text
-        else:
-            self.library_empty.adaptive_height = True
-            self.library_empty.height = self.library_empty.minimum_height
-            self.library_empty.opacity = 1
-            self.library_empty.disabled = False
-            self.library_count.text = ""
+        return MDLabel(
+            text=_count_summary(len(novels), n_tracked),
+            theme_text_color="Secondary",
+            font_style="Caption", adaptive_height=True, size_hint_y=None)
 
+    def _empty_state(self):
+        box = MDBoxLayout(
+            orientation="vertical", adaptive_height=True,
+            padding="16dp", spacing="4dp")
+        box.add_widget(MDIcon(
+            icon="bookshelf", halign="center", font_size="56dp",
+            theme_text_color="Secondary"))
+        box.add_widget(MDLabel(
+            text="Your library is empty", halign="center", bold=True,
+            adaptive_height=True))
+        box.add_widget(MDLabel(
+            text="Browse the hot list or search for novels\nto start reading.",
+            halign="center", theme_text_color="Secondary",
+            font_style="Caption", adaptive_height=True))
+        return box
+
+    def _cover_box(self, cover, width, radius=None, flex_h=None):
+        radius = radius or theme.COVER_RADIUS
+        box = MDBoxLayout(
+            size_hint=(None, 1), width=width,
+            radius=radius, md_bg_color=theme.surface_color())
+        if cover:
+            box.add_widget(_FitCover(
+                source=cover, radius=radius, size_hint=(1, 1)))
+        return box
+
+    def _card_grid(self, novels, cols):
+        grid = MDBoxLayout(
+            orientation="vertical", adaptive_height=True, spacing="8dp")
+        for i in range(0, len(novels), cols):
+            row = MDBoxLayout(
+                orientation="horizontal", adaptive_height=True, spacing="8dp")
+            for n in novels[i:i + cols]:
+                try:
+                    row.add_widget(self._continue_card(n, cols=cols))
+                except Exception:
+                    import traceback
+                    traceback.print_exc()
+            if row.children:
+                grid.add_widget(row)
+        return grid
+
+    def _hscroll(self, novels):
+        """Horizontal scroll of cover cards (Continue Reading section)."""
+        row = MDBoxLayout(
+            orientation="horizontal", adaptive_height=True,
+            spacing="8dp", padding=("8dp", 0, "8dp", 0))
         for n in novels:
-            slug = n["slug"]
-            meta = utils._read_meta(slug)   # {"title", "cover", "chapters"} or {}
-            title = meta.get("title") or n["title"]
-            last = progress.get_last(slug)   # stored chapter index or None
-            tracked_only = utils._is_tracked(slug) and not utils._has_chapters(slug)
+            try:
+                row.add_widget(self._continue_card(n))
+            except Exception:
+                import traceback
+                traceback.print_exc()
+        sv = _TapFriendlyHScroll(
+            size_hint_y=None, height="225dp",
+            do_scroll_x=True, do_scroll_y=False,
+            bar_width=0, scroll_type=["content"])
+        sv.add_widget(row)
+        return sv
 
-            if tracked_only:
-                sub = "Tracked · download to start"
-                count = 0
+    # ---------- shared card builders ----------
+
+    def _continue_card(self, n, width=dp(150), cover_frac=1.0, cols=0):
+        slug = n["slug"]
+        meta = utils._read_meta(slug)
+        title = meta.get("title") or n["title"]
+        last = progress.get_last(slug)
+        count = meta.get("chapters") or n["count"]
+        cover = os.path.join("novels", slug, meta["cover"]) if meta.get("cover") else ""
+
+        card = _TapCard(
+            orientation="vertical", size_hint_y=None,
+            height="215dp" if cover_frac >= 1 else "160dp",
+            elevation=2, radius=theme.CARD_RADIUS,
+            padding="8dp", spacing="4dp",
+        )
+        if cols:
+            card.size_hint_x = 1.0 / cols
+        else:
+            card.size_hint_x = None
+            card.width = width
+
+        cover_h = 1.0 if cover_frac >= 1 else 0.72
+        cbox = MDBoxLayout(
+            size_hint=(1, cover_h),
+            radius=theme.COVER_RADIUS, md_bg_color=theme.surface_color())
+        if cover:
+            cbox.add_widget(_FitCover(
+                source=cover, radius=theme.COVER_RADIUS, size_hint=(1, 1)))
+        card.add_widget(cbox)
+
+        card.add_widget(MDLabel(
+            text=title, bold=True, font_style="Caption",
+            size_hint_y=None, height="20dp", halign="center",
+            shorten=True, shorten_from="right", max_lines=1))
+        sub = ""
+        if last is not None:
+            sub = f"Ch. {last + 1}/{count if count else '?'}"
+        card.add_widget(MDLabel(
+            text=sub, theme_text_color="Secondary",
+            font_style="Caption", size_hint_y=None, height="16dp",
+            halign="center"))
+
+        card.on_release = lambda *_, s=slug, t=title, c=cover: \
+            self._open_library_novel(s, t, c)
+        return card
+
+    def _row_card(self, n, compact=False, badge=False):
+        slug = n["slug"]
+        meta = utils._read_meta(slug)
+        title = meta.get("title") or n["title"]
+        last = progress.get_last(slug)
+        tracked_only = utils._is_tracked(slug) and not utils._has_chapters(slug)
+
+        if tracked_only:
+            sub = "Tracked · download to start"
+            count = 0
+        else:
+            count = meta.get("chapters") or n["count"]
+            sub = f"{count} chapters"
+            if last is not None:
+                sub += f" · Last: Ch. {last + 1}"  # +1: index -> human number
+
+        cover = os.path.join("novels", slug, meta["cover"]) if meta.get("cover") else ""
+
+        height = dp(92) if compact else dp(124)
+        row = _TapCard(
+            orientation="horizontal",
+            size_hint_y=None, height=height,
+            padding="12dp", spacing="16dp",
+            elevation=2, radius=theme.CARD_RADIUS,
+        )
+
+        cover_w = dp(48) if compact else dp(62)
+        row.add_widget(self._cover_box(cover, cover_w))
+
+        texts = MDBoxLayout(orientation="vertical", size_hint_y=1, spacing="2dp")
+        title_h = "22dp" if compact else "30dp"
+        texts.add_widget(MDLabel(
+            text=title, bold=True,
+            font_style="Subtitle2" if compact else "Subtitle1",
+            size_hint_y=None, height=title_h,
+            shorten=True, shorten_from="right", max_lines=1))
+        texts.add_widget(MDLabel(
+            text=sub, theme_text_color="Secondary",
+            font_style="Caption", size_hint_y=None, height="18dp"))
+
+        source = utils._get_source(slug)
+        if source is not None and not tracked_only:
+            if badge:
+                source_label = MDLabel(
+                    text=source.label, theme_text_color="Secondary",
+                    font_style="Caption", size_hint_y=None, height="18dp")
+                source_label.halign = "left"
+                texts.add_widget(source_label)
             else:
-                count = meta.get("chapters") or n["count"]
-                sub = f"{count} chapters"
-                if last is not None:
-                    sub += f" · Last: Ch. {last + 1}"  # +1: index -> human number
-
-            cover = os.path.join("novels", slug, meta["cover"]) if meta.get("cover") else ""
-
-            row = _TapCard(
-                orientation="horizontal",
-                size_hint_y=None,
-                height=dp(124),
-                padding="12dp",
-                spacing="16dp",
-                elevation=2,
-                radius=theme.CARD_RADIUS,
-            )
-
-            cover_box = MDBoxLayout(
-                size_hint=(None, 1), width=dp(62),
-                radius=[10, 10, 10, 10], md_bg_color=theme.surface_color(),
-            )
-            if cover:
-                cover_box.add_widget(FitImage(
-                    source=cover, radius=theme.COVER_RADIUS, size_hint=(1, 1)))
-            row.add_widget(cover_box)
-
-            texts = MDBoxLayout(orientation="vertical", size_hint_y=1, spacing="2dp")
-            texts.add_widget(MDLabel(
-                text=title, bold=True,
-                font_style="Subtitle1", size_hint_y=None, height="30dp",
-                shorten=True, shorten_from="right", max_lines=1))
-            texts.add_widget(MDLabel(
-                text=sub, theme_text_color="Secondary",
-                font_style="Caption", size_hint_y=None, height="18dp"))
-
-            source = utils._get_source(slug)
-            if source is not None and not tracked_only:
                 texts.add_widget(MDLabel(
                     text=source.label, theme_text_color="Secondary",
                     font_style="Caption", size_hint_y=None, height="18dp"))
 
-            if tracked_only:
-                chip = MDBoxLayout(orientation="horizontal", adaptive_height=True,
-                                   size_hint=(None, None), spacing="4dp")
-                chip.add_widget(MDIcon(icon="bookmark", theme_text_color="Secondary"))
-                chip.add_widget(MDLabel(
-                    text="Tracked", theme_text_color="Secondary",
-                    font_style="Caption", adaptive_height=True))
-                row.add_widget(chip)
-            elif last is not None and count:
-                texts.add_widget(MDProgressBar(
-                    value=last + 1, max=max(count, 1),
-                    size_hint_y=None, height=dp(6)))
+        if tracked_only:
+            chip = MDBoxLayout(
+                orientation="horizontal", adaptive_height=True,
+                size_hint=(None, None), spacing="4dp")
+            chip.add_widget(MDIcon(icon="bookmark", theme_text_color="Secondary"))
+            chip.add_widget(MDLabel(
+                text="Tracked", theme_text_color="Secondary",
+                font_style="Caption", adaptive_height=True))
+            row.add_widget(chip)
+        elif last is not None and count:
+            style = load_settings().get("read_indicator", "off")
+            if style != "off":
+                # text/percentage render a label, so give those styles the
+                # vertical room; the canvas bar styles stay a thin strip.
+                ind_h = dp(22) if style in ("text", "percentage") else dp(6)
+                try:
+                    texts.add_widget(ReadIndicator(
+                        frac=(last + 1) / max(count, 1), style=style,
+                        display_text=f"Ch. {last + 1}/{count}",
+                        size_hint_y=None, height=ind_h))
+                except Exception:
+                    import traceback
+                    traceback.print_exc()
 
-            row.add_widget(texts)
-            row.on_release = lambda *_, s=slug, t=title, c=cover: \
-                self._open_library_novel(s, t, c)
-            self.library_list.add_widget(row)
+        row.add_widget(texts)
+        row.on_release = lambda *_, s=slug, t=title, c=cover: \
+            self._open_library_novel(s, t, c)
+        return row
+
+    # ---------- layout builders ----------
+
+    def _continue_section(self, cont):
+        """Continue Reading: hscroll of cover cards, or an empty-state note."""
+        sec = MDBoxLayout(
+            orientation="vertical", adaptive_height=True,
+            spacing=theme.SECTION_GAP)
+        sec.add_widget(self._section_header("Continue Reading"))
+        if cont:
+            sec.add_widget(self._hscroll(cont))
+        else:
+            sec.add_widget(MDLabel(
+                text="Nothing in progress yet.",
+                theme_text_color="Secondary", font_style="Caption",
+                adaptive_height=True, size_hint_y=None))
+        return sec
+
+    def _layout_A(self, novels):
+        """Continue-Reading hscroll + library cover-card grid."""
+        box = self.content_box
+        cont = [n for n in novels if progress.get_last(n["slug"]) is not None][:10]
+        if load_settings().get("show_continue_reading", True):
+            box.add_widget(self._continue_section(cont))
+        box.add_widget(self._section_header("My Library"))
+        box.add_widget(self._count_label(novels))
+        box.add_widget(self._card_grid(novels, _grid_cols()))
+
+    def _layout_B(self, novels):
+        """Continue-Reading hscroll + source-badge compact rows."""
+        box = self.content_box
+        cont = [n for n in novels if progress.get_last(n["slug"]) is not None][:10]
+        if load_settings().get("show_continue_reading", True):
+            box.add_widget(self._continue_section(cont))
+        box.add_widget(self._section_header("My Library"))
+        box.add_widget(self._count_label(novels))
+        for n in novels:
+            box.add_widget(self._row_card(n, compact=True, badge=True))
 
     # ---------- library actions ----------
 
