@@ -370,15 +370,19 @@ class HomeTab(MDScreen):
             card.width = width
 
         cover_h = 1.0 if cover_frac >= 1 else 0.72
-        cbox = FloatLayout(size_hint=(1, cover_h))
+        cbox = MDBoxLayout(
+            size_hint=(1, cover_h),
+            radius=theme.COVER_RADIUS, md_bg_color=theme.surface_color())
+        overlay = FloatLayout(size_hint=(1, 1))
         if cover:
-            cbox.add_widget(_FitCover(
+            overlay.add_widget(_FitCover(
                 source=cover, radius=theme.COVER_RADIUS, size_hint=(1, 1)))
         unread = _unread_count(count, last)
         if unread:
-            cbox.add_widget(UnreadBadge(
+            overlay.add_widget(UnreadBadge(
                 count=unread, size_hint=(None, None), size=(dp(24), dp(24)),
                 pos_hint={"right": 1, "bottom": 1}))
+        cbox.add_widget(overlay)
         card.add_widget(cbox)
 
         card.add_widget(MDLabel(
@@ -397,27 +401,34 @@ class HomeTab(MDScreen):
             self._open_library_novel(s, t, c)
         return card
 
-    def _grid_cover(self, n, aspect=1.45):
+    def _grid_cover(self, n, cols=2, height=260):
         """Mihon-style library cover: a bare rounded image (no card chrome)
-        sized from its own width, with an unread-count badge in the corner."""
+        with an unread-count badge in the corner. Fixed height per grid
+        column so grid tiles stack reliably at any screen size."""
         slug = n["slug"]
         meta = utils._read_meta(slug)
         cover = os.path.join("novels", slug, meta["cover"]) if meta.get("cover") else ""
         count = meta.get("chapters") or n["count"]
         last = progress.get_last(slug)
+        if cols <= 1:
+            height = 320
+        elif cols >= 3:
+            height = 230
 
-        cell = FloatLayout(size_hint=(1, None))
-        cell.bind(width=lambda w, v: setattr(
-            cell, "height", min(max(v * aspect, dp(150)), dp(320))))
+        cbox = MDBoxLayout(
+            size_hint=(1, None), height="%ddp" % height,
+            radius=theme.COVER_RADIUS, md_bg_color=theme.surface_color())
+        overlay = FloatLayout(size_hint=(1, 1))
         if cover:
-            cell.add_widget(_FitCover(
+            overlay.add_widget(_FitCover(
                 source=cover, radius=theme.COVER_RADIUS, size_hint=(1, 1)))
         unread = _unread_count(count, last)
         if unread:
-            cell.add_widget(UnreadBadge(
+            overlay.add_widget(UnreadBadge(
                 count=unread, size_hint=(None, None), size=(dp(24), dp(24)),
                 pos_hint={"right": 1, "bottom": 1}))
-        return cell
+        cbox.add_widget(overlay)
+        return cbox
 
     def _grid_card(self, n, cols=0):
         """Bare-cover grid tile: cover with centered title below (no elevation,
@@ -436,7 +447,7 @@ class HomeTab(MDScreen):
         else:
             card.size_hint_x = None
             card.width = dp(150)
-        card.add_widget(self._grid_cover(n))
+        card.add_widget(self._grid_cover(n, cols=cols))
         card.add_widget(MDLabel(
             text=title, bold=True, font_style="Caption", halign="center",
             size_hint_y=None, adaptive_height=True,

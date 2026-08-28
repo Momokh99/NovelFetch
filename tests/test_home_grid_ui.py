@@ -57,9 +57,11 @@ def tab(tmp_path, monkeypatch):
     yield win
 
 
-def _make_novel(slug, chapters, last=None, title=None):
+def _make_novel(slug, chapters, last=None, title=None, cover="cover.png"):
     os.makedirs(os.path.join("novels", slug), exist_ok=True)
-    meta = {"title": title or slug, "cover": "", "chapters": chapters}
+    if cover:
+        open(os.path.join("novels", slug, cover), "wb").write(b"x")
+    meta = {"title": title or slug, "cover": cover, "chapters": chapters}
     with open(os.path.join("novels", slug, "meta.json"), "w") as f:
         json.dump(meta, f)
     if last is not None:
@@ -98,6 +100,26 @@ def test_badge_text_caps_at_999():
     assert _badge_text(999) == "999"
     assert _badge_text(1000) == "999+"
     assert _badge_text(1300) == "999+"
+
+
+# ---------- cover rendering path ----------
+
+def test_grid_card_draws_cover(tab):
+    from screens.home_tab import _FitCover
+    novel = _make_novel("a:cover_g", chapters=4)
+    card = tab._grid_card(novel, cols=2)
+    cover = _find(card, _FitCover)
+    assert cover is not None
+    assert cover.source == os.path.join("novels", novel["slug"], "cover.png")
+
+
+def test_continue_card_draws_cover(tab):
+    from screens.home_tab import _FitCover
+    novel = _make_novel("a:cover_c", chapters=4, last=1)
+    card = tab._continue_card(novel)
+    cover = _find(card, _FitCover)
+    assert cover is not None
+    assert cover.source == os.path.join("novels", novel["slug"], "cover.png")
 
 
 # ---------- grid card widgets ----------
