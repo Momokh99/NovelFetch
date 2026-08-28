@@ -4,6 +4,7 @@ import os
 from kivy.clock import Clock
 from kivy.metrics import dp, sp
 from kivy.properties import NumericProperty, StringProperty
+from kivy.uix.floatlayout import FloatLayout
 from kivy.uix.image import Image
 from kivy.uix.scrollview import ScrollView
 
@@ -34,6 +35,19 @@ def _count_summary(total, tracked):
 
 def _grid_cols():
     return _GRID_COLS.get(load_settings().get("card_grid_size", "medium"), 2)
+
+
+def _unread_count(count, last):
+    """Unread chapters: total minus read. *last* is the 0-based index of the
+    last read chapter, or None when nothing has been read."""
+    if last is None:
+        return count
+    return max(0, count - (last + 1))
+
+
+def _badge_text(count):
+    """Badge label: the count, clamped like Mihon's '999+' caps."""
+    return "999+" if count > 999 else str(count)
 
 
 class _TapFriendlyHScroll(ScrollView):
@@ -72,6 +86,43 @@ class _FitCover(FitImage):
             size_hint=(1, 1), allow_stretch=True, keep_ratio=False)
         self.bind(source=self._container.setter("source"))
         self.add_widget(self._container)
+
+
+class UnreadBadge(MDBoxLayout):
+    """Mihon-style unread-count pill floating on a cover corner."""
+
+    count = NumericProperty(0)
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self._label = MDLabel(
+            halign="center", valign="middle", bold=True,
+            font_size=sp(10), theme_text_color="Custom",
+            text_color=[1, 1, 1, 1])
+        self.add_widget(self._label)
+        self.bind(size=self._redraw, count=self._redraw)
+        self._redraw()
+
+    def _redraw(self, *_):
+        from kivy.graphics import Color, RoundedRectangle
+        self.canvas.clear()
+        n = int(self.count)
+        self._label.text = _badge_text(n) if n else ""
+        if not n:
+            return
+        w, h = self.width, self.height
+        if w <= 0 or h <= 0:
+            return
+        app = MDApp.get_running_app()
+        if app is None:
+            prim = (0.13, 0.55, 0.96, 1)
+        else:
+            prim = list(app.theme_cls.primary_color)
+        m = dp(2.5)  # inner padding floats the pill off the corner
+        size = min(w, h) - 2 * m
+        Color(*prim)
+        RoundedRectangle(pos=(self.x + (w - size) / 2, self.y + (h - size) / 2),
+                         size=(size, size), radius=[size / 2] * 4)
 
 
 class ReadIndicator(MDBoxLayout):
@@ -198,6 +249,8 @@ class HomeTab(MDScreen):
     def _build_library(self, novels):
         box = self.content_box
         box.clear_widgets()
+        self.topbar.set_title(
+            f"NovelFetch · {len(novels)}" if novels else "NovelFetch")
         if not novels:
             box.add_widget(self._empty_state())
             return
@@ -268,7 +321,7 @@ class HomeTab(MDScreen):
                 orientation="horizontal", adaptive_height=True, spacing="8dp")
             for n in novels[i:i + cols]:
                 try:
-                    row.add_widget(self._continue_card(n, cols=cols))
+                    row.add_widget(self._grid_card(n, cols=cols))
                 except Exception:
                     import traceback
                     traceback.print_exc()
@@ -288,7 +341,7 @@ class HomeTab(MDScreen):
                 import traceback
                 traceback.print_exc()
         sv = _TapFriendlyHScroll(
-            size_hint_y=None, height="225dp",
+            size_hint_y=None, height="270dp",
             do_scroll_x=True, do_scroll_y=False,
             bar_width=0, scroll_type=["content"])
         sv.add_widget(row)
@@ -306,7 +359,7 @@ class HomeTab(MDScreen):
 
         card = _TapCard(
             orientation="vertical", size_hint_y=None,
-            height="215dp" if cover_frac >= 1 else "160dp",
+            height="260dp" if cover_frac >= 1 else "190dp",
             elevation=2, radius=theme.CARD_RADIUS,
             padding="8dp", spacing="4dp",
         )
@@ -317,12 +370,15 @@ class HomeTab(MDScreen):
             card.width = width
 
         cover_h = 1.0 if cover_frac >= 1 else 0.72
-        cbox = MDBoxLayout(
-            size_hint=(1, cover_h),
-            radius=theme.COVER_RADIUS, md_bg_color=theme.surface_color())
+        cbox = FloatLayout(size_hint=(1, cover_h))
         if cover:
             cbox.add_widget(_FitCover(
                 source=cover, radius=theme.COVER_RADIUS, size_hint=(1, 1)))
+        unread = _unread_count(count, last)
+        if unread:
+            cbox.add_widget(UnreadBadge(
+                count=unread, size_hint=(None, None), size=(dp(24), dp(24)),
+                pos_hint={"right": 1, "bottom": 1}))
         card.add_widget(cbox)
 
         card.add_widget(MDLabel(
@@ -337,6 +393,54 @@ class HomeTab(MDScreen):
             font_style="Caption", size_hint_y=None, height="16dp",
             halign="center"))
 
+        card.on_release = lambda *_, s=slug, t=title, c=cover: \
+            self._open_library_novel(s, t, c)
+        return card
+
+    def _grid_cover(self, n, aspect=1.45):
+        """Mihon-style library cover: a bare rounded image (no card chrome)
+        sized from its own width, with an unread-count badge in the corner."""
+        slug = n["slug"]
+        meta = utils._read_meta(slug)
+        cover = os.path.join("novels", slug, meta["cover"]) if meta.get("cover") else ""
+        count = meta.get("chapters") or n["count"]
+        last = progress.get_last(slug)
+
+        cell = FloatLayout(size_hint=(1, None))
+        cell.bind(width=lambda w, v: setattr(
+            cell, "height", min(max(v * aspect, dp(150)), dp(320))))
+        if cover:
+            cell.add_widget(_FitCover(
+                source=cover, radius=theme.COVER_RADIUS, size_hint=(1, 1)))
+        unread = _unread_count(count, last)
+        if unread:
+            cell.add_widget(UnreadBadge(
+                count=unread, size_hint=(None, None), size=(dp(24), dp(24)),
+                pos_hint={"right": 1, "bottom": 1}))
+        return cell
+
+    def _grid_card(self, n, cols=0):
+        """Bare-cover grid tile: cover with centered title below (no elevation,
+        no card box — the Mihon comfortable-grid look)."""
+        slug = n["slug"]
+        meta = utils._read_meta(slug)
+        title = meta.get("title") or n["title"]
+        cover = os.path.join("novels", slug, meta["cover"]) if meta.get("cover") else ""
+
+        card = _TapCard(
+            orientation="vertical", size_hint_y=None, adaptive_height=True,
+            elevation=0, radius=[0] * 4, md_bg_color=[0, 0, 0, 0],
+            padding=0, spacing="4dp")
+        if cols:
+            card.size_hint_x = 1.0 / cols
+        else:
+            card.size_hint_x = None
+            card.width = dp(150)
+        card.add_widget(self._grid_cover(n))
+        card.add_widget(MDLabel(
+            text=title, bold=True, font_style="Caption", halign="center",
+            size_hint_y=None, adaptive_height=True,
+            shorten=True, shorten_from="right", max_lines=2))
         card.on_release = lambda *_, s=slug, t=title, c=cover: \
             self._open_library_novel(s, t, c)
         return card
