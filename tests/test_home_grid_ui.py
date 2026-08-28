@@ -122,6 +122,28 @@ def test_continue_card_draws_cover(tab):
     assert cover.source == os.path.join("novels", novel["slug"], "cover.png")
 
 
+def test_grid_cover_has_direct_cover_child(tab):
+    from kivy.uix.floatlayout import FloatLayout
+    from screens.home_tab import _FitCover
+    novel = _make_novel("a:direct_g", chapters=10, last=2)
+    cbox = tab._grid_cover(novel, cols=2)
+    assert _find(cbox, FloatLayout) is None  # no overlay between cbox and cover
+    cover = _find(cbox, _FitCover)
+    assert cover is not None
+    assert cover.parent is cbox
+
+
+def test_continue_card_cover_has_direct_child(tab):
+    from kivy.uix.floatlayout import FloatLayout
+    from screens.home_tab import _FitCover
+    novel = _make_novel("a:direct_c", chapters=4, last=0)
+    card = tab._continue_card(novel)
+    assert _find(card, FloatLayout) is None
+    cover = _find(card, _FitCover)
+    assert cover is not None
+    assert cover.parent is not None
+
+
 # ---------- grid card widgets ----------
 
 def test_grid_card_is_bare(tab):

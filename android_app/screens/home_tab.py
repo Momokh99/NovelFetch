@@ -4,7 +4,6 @@ import os
 from kivy.clock import Clock
 from kivy.metrics import dp, sp
 from kivy.properties import NumericProperty, StringProperty
-from kivy.uix.floatlayout import FloatLayout
 from kivy.uix.image import Image
 from kivy.uix.scrollview import ScrollView
 
@@ -89,29 +88,38 @@ class _FitCover(FitImage):
 
 
 class UnreadBadge(MDBoxLayout):
-    """Mihon-style unread-count pill floating on a cover corner."""
+    """Mihon-style unread-count pill floating on a cover corner.
+
+    The widget takes no layout space (zero size) so it can sit next to the
+    cover without an overlay layout; it draws itself onto the parent cover
+    box's corner via canvas instructions.
+    """
 
     count = NumericProperty(0)
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        self._label = MDLabel(
-            halign="center", valign="middle", bold=True,
-            font_size=sp(10), theme_text_color="Custom",
-            text_color=[1, 1, 1, 1])
-        self.add_widget(self._label)
-        self.bind(size=self._redraw, count=self._redraw)
+        from kivy.core.text import Label as CoreLabel
+        self._label = CoreLabel(text="", font_size=dp(10), bold=True)
+        self.size_hint = (None, None)
+        self.size = (0, 0)
+        self.bind(count=self._redraw, parent=self._on_parent)
+        self._redraw()
+
+    def _on_parent(self, _widget, parent):
+        if parent is not None:
+            parent.bind(pos=self._redraw, size=self._redraw)
         self._redraw()
 
     def _redraw(self, *_):
-        from kivy.graphics import Color, RoundedRectangle
+        from kivy.graphics import Color, Rectangle, RoundedRectangle
         self.canvas.clear()
         n = int(self.count)
         self._label.text = _badge_text(n) if n else ""
-        if not n:
+        if not n or self.parent is None:
             return
-        w, h = self.width, self.height
-        if w <= 0 or h <= 0:
+        pw, ph = self.parent.width, self.parent.height
+        if pw <= 0 or ph <= 0:
             return
         app = MDApp.get_running_app()
         if app is None:
@@ -119,10 +127,18 @@ class UnreadBadge(MDBoxLayout):
         else:
             prim = list(app.theme_cls.primary_color)
         m = dp(2.5)  # inner padding floats the pill off the corner
-        size = min(w, h) - 2 * m
-        Color(*prim)
-        RoundedRectangle(pos=(self.x + (w - size) / 2, self.y + (h - size) / 2),
-                         size=(size, size), radius=[size / 2] * 4)
+        pill = min(dp(22), ph - 2 * m)
+        x = self.parent.x - self.x + pw - m - pill
+        y = self.parent.y - self.y + m
+        with self.canvas:
+            Color(*prim)
+            RoundedRectangle(pos=(x, y), size=(pill, pill),
+                             radius=[pill / 2] * 4)
+            self._label.refresh()
+            tex = self._label.texture
+            if tex:
+                Color(1, 1, 1, 1)
+                Rectangle(texture=tex, pos=(x, y), size=(pill, pill))
 
 
 class ReadIndicator(MDBoxLayout):
@@ -169,46 +185,47 @@ class ReadIndicator(MDBoxLayout):
         if style != "percentage":
             self._label.halign = "left"
         from kivy.graphics import Color, Ellipse, RoundedRectangle
-        if style == "linear":
-            r = h / 2
-            Color(*self._track())
-            RoundedRectangle(pos=self.pos, size=(w, h), radius=[r] * 4)
-            if frac > 0:
-                Color(*prim)
-                RoundedRectangle(pos=self.pos, size=(w * frac, h),
-                                 radius=[r] * 4)
-        elif style == "percentage":
-            self._label.halign = "center"
-        elif style in ("blocks", "dots"):
-            n = 12
-            gap = dp(2)
-            cw = (w - gap * (n - 1)) / n
-            filled = int(round(frac * n))
-            for i in range(n):
-                x = self.x + i * (cw + gap)
-                if i < filled:
+        with self.canvas:
+            if style == "linear":
+                r = h / 2
+                Color(*self._track())
+                RoundedRectangle(pos=self.pos, size=(w, h), radius=[r] * 4)
+                if frac > 0:
                     Color(*prim)
-                else:
-                    Color(*self._track())
-                if style == "blocks":
-                    RoundedRectangle(pos=(x, self.y), size=(cw, h),
-                                     radius=[dp(1.5)] * 4)
-                else:
-                    d = max(1.0, min(cw, h) - dp(1))
-                    Ellipse(pos=(x + (cw - d) / 2, self.y + (h - d) / 2),
-                            size=(d, d))
-        elif style == "wave":
-            amp = dp(1.5)
-            base = h * (1 - frac)
-            col_w = 4.0
-            x = self.x
-            while x < self.x + w:
-                t = (x - self.x) / w
-                top = base + amp * math.sin(t * 4 * math.pi)
-                Color(prim[0], prim[1], prim[2], 0.4)
-                RoundedRectangle(pos=(x, self.y + top),
-                                 size=(col_w, h - top), radius=[0] * 4)
-                x += col_w
+                    RoundedRectangle(pos=self.pos, size=(w * frac, h),
+                                     radius=[r] * 4)
+            elif style == "percentage":
+                self._label.halign = "center"
+            elif style in ("blocks", "dots"):
+                n = 12
+                gap = dp(2)
+                cw = (w - gap * (n - 1)) / n
+                filled = int(round(frac * n))
+                for i in range(n):
+                    x = self.x + i * (cw + gap)
+                    if i < filled:
+                        Color(*prim)
+                    else:
+                        Color(*self._track())
+                    if style == "blocks":
+                        RoundedRectangle(pos=(x, self.y), size=(cw, h),
+                                         radius=[dp(1.5)] * 4)
+                    else:
+                        d = max(1.0, min(cw, h) - dp(1))
+                        Ellipse(pos=(x + (cw - d) / 2, self.y + (h - d) / 2),
+                                size=(d, d))
+            elif style == "wave":
+                amp = dp(1.5)
+                base = h * (1 - frac)
+                col_w = 4.0
+                x = self.x
+                while x < self.x + w:
+                    t = (x - self.x) / w
+                    top = base + amp * math.sin(t * 4 * math.pi)
+                    Color(prim[0], prim[1], prim[2], 0.4)
+                    RoundedRectangle(pos=(x, self.y + top),
+                                     size=(col_w, h - top), radius=[0] * 4)
+                    x += col_w
 
 
 class HomeTab(MDScreen):
@@ -373,16 +390,12 @@ class HomeTab(MDScreen):
         cbox = MDBoxLayout(
             size_hint=(1, cover_h),
             radius=theme.COVER_RADIUS, md_bg_color=theme.surface_color())
-        overlay = FloatLayout(size_hint=(1, 1))
         if cover:
-            overlay.add_widget(_FitCover(
+            cbox.add_widget(_FitCover(
                 source=cover, radius=theme.COVER_RADIUS, size_hint=(1, 1)))
         unread = _unread_count(count, last)
         if unread:
-            overlay.add_widget(UnreadBadge(
-                count=unread, size_hint=(None, None), size=(dp(24), dp(24)),
-                pos_hint={"right": 1, "bottom": 1}))
-        cbox.add_widget(overlay)
+            cbox.add_widget(UnreadBadge(count=unread))
         card.add_widget(cbox)
 
         card.add_widget(MDLabel(
@@ -418,16 +431,12 @@ class HomeTab(MDScreen):
         cbox = MDBoxLayout(
             size_hint=(1, None), height="%ddp" % height,
             radius=theme.COVER_RADIUS, md_bg_color=theme.surface_color())
-        overlay = FloatLayout(size_hint=(1, 1))
         if cover:
-            overlay.add_widget(_FitCover(
+            cbox.add_widget(_FitCover(
                 source=cover, radius=theme.COVER_RADIUS, size_hint=(1, 1)))
         unread = _unread_count(count, last)
         if unread:
-            overlay.add_widget(UnreadBadge(
-                count=unread, size_hint=(None, None), size=(dp(24), dp(24)),
-                pos_hint={"right": 1, "bottom": 1}))
-        cbox.add_widget(overlay)
+            cbox.add_widget(UnreadBadge(count=unread))
         return cbox
 
     def _grid_card(self, n, cols=0):
