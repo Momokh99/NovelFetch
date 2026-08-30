@@ -1,6 +1,6 @@
 from kivy.metrics import dp
-from kivy.uix.behaviors import ButtonBehavior
 from kivy.uix.image import AsyncImage
+from kivy.uix.relativelayout import RelativeLayout
 
 from kivymd.app import MDApp
 from kivymd.uix.boxlayout import MDBoxLayout
@@ -9,11 +9,6 @@ from kivymd.uix.label import MDLabel
 from kivymd.uix.screen import MDScreen
 
 from screens import utils, theme
-
-
-class _TapCard(MDCard, ButtonBehavior):
-    """MDCard lacks ButtonBehavior in KivyMD 1.2, so MDCard.on_release doesn't
-    exist. Adding ButtonBehavior gives us a working on_release for taps."""
 
 
 class NovelListScreen(MDScreen):
@@ -44,7 +39,7 @@ class NovelListScreen(MDScreen):
             self.list_view.add_widget(self._make_row(n))
 
     def _make_row(self, novel):
-        row = _TapCard(
+        row = MDCard(
             orientation="horizontal",
             size_hint_y=None,
             height=dp(120),
@@ -60,19 +55,22 @@ class NovelListScreen(MDScreen):
         )
         if cover:
             utils.set_image_url(img, cover)
-        texts = MDBoxLayout(orientation="vertical", size_hint_y=1, spacing="2dp")
+        texts = MDBoxLayout(orientation="vertical", size_hint_y=None, adaptive_height=True, spacing="2dp",
+                            pos_hint={"center_x": 0.5, "center_y": 0.5})
         texts.add_widget(MDLabel(
             text=novel["title"], bold=True,
-            font_style="Subtitle1", size_hint_y=None, height="28dp",
+            font_style="Title", role="medium", size_hint_y=None, height="28dp",
             shorten=True, shorten_from="right", max_lines=1))
         sub = novel.get("author", "") or ""
         if novel.get("latest"):
             sub += f"  ·  {novel['latest']}"
         texts.add_widget(MDLabel(
             text=sub, theme_text_color="Secondary",
-            font_style="Caption", size_hint_y=None, height="20dp"))
+            font_style="Label", role="large", size_hint_y=None, height="22dp"))
+        texts_rl = RelativeLayout(size_hint=(1, 1))
+        texts_rl.add_widget(texts)
         row.add_widget(img)
-        row.add_widget(texts)
+        row.add_widget(texts_rl)
         row.add_widget(utils._add_to_library_icon(novel, self.source))
         row.on_release = lambda: self._open(novel)   # closure: one novel per row
         return row

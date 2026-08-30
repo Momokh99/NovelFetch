@@ -2,7 +2,7 @@ from kivy.clock import Clock
 from kivymd.app import MDApp
 from kivymd.uix.label import MDLabel
 from kivymd.uix.screen import MDScreen
-from kivymd.uix.snackbar import MDSnackbar
+from screens.utils import _snack
 
 from async_runner import async_loop
 from screens import utils
@@ -111,4 +111,4 @@ class DownloadProgressScreen(MDScreen):
         MDApp.get_running_app().back()
 
     def _notify(self, text):
-        MDSnackbar(MDLabel(text=text)).open()
+        _snack(text)

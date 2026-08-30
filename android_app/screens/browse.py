@@ -2,11 +2,15 @@ from kivy.factory import Factory
 from kivy.metrics import dp
 from kivymd.app import MDApp
 from kivymd.uix.boxlayout import MDBoxLayout
-from kivymd.uix.dialog import MDDialog
+from kivymd.uix.dialog import (
+    MDDialog,
+    MDDialogHeadlineText,
+    MDDialogContentContainer,
+)
 from kivymd.uix.label import MDLabel
-from kivymd.uix.list import MDList, OneLineListItem
-from kivymd.uix.progressbar import MDProgressBar
-from kivymd.uix.snackbar import MDSnackbar
+from kivymd.uix.list import MDList, MDListItem, MDListItemHeadlineText
+from kivymd.uix.progressindicator import MDLinearProgressIndicator
+from screens.utils import _snack
 
 from async_runner import async_loop
 
@@ -28,12 +32,14 @@ class BrowseSection(MDBoxLayout):
         self.browse_list = MDList()
         for key, label in BROWSE.items():
             # k=key freezes the loop variable (closure trap)
-            self.browse_list.add_widget(OneLineListItem(
-                text=label, on_release=lambda *_, k=key: self.browse(k)))
-        self.browse_list.add_widget(OneLineListItem(
-            text="Genres", on_release=lambda *_: self.open_genres()))
+            self.browse_list.add_widget(MDListItem(MDListItemHeadlineText(
+                text=label,
+            ), on_release=lambda *_, k=key: self.browse(k)))
+        self.browse_list.add_widget(MDListItem(MDListItemHeadlineText(
+            text="Genres",
+        ), on_release=lambda *_: self.open_genres()))
         self.add_widget(self.browse_list)
-        self.progress_bar = MDProgressBar(
+        self.progress_bar = MDLinearProgressIndicator(
             indeterminate=True, opacity=0,
             size_hint_y=None, height=dp(4))
         self.add_widget(self.progress_bar)
@@ -70,10 +76,17 @@ class BrowseSection(MDBoxLayout):
 
         rows = MDList()
         for slug, label in source.genres.items():
-            rows.add_widget(OneLineListItem(
-                text=label, on_release=lambda *_, g=slug: self.browse_genre(g)))
+            rows.add_widget(MDListItem(MDListItemHeadlineText(
+                text=label,
+            ), on_release=lambda *_, g=slug: self.browse_genre(g)))
         # Instance ref: a dialog with no strong ref can be GC'd mid-open.
-        self._genre_dialog = MDDialog(title="Genres", type="custom", content_cls=rows)
+        self._genre_dialog = MDDialog(
+            MDDialogHeadlineText(
+                text="Genres",
+                halign="left",
+            ),
+            MDDialogContentContainer(rows),
+        )
         self._genre_dialog.open()
 
     def browse_genre(self, genre_slug):
@@ -120,7 +133,7 @@ class BrowseSection(MDBoxLayout):
         self.progress_bar.opacity = 1 if busy else 0
 
     def _notify(self, text):
-        MDSnackbar(MDLabel(text=text)).open()
+        _snack(text)
 
 
 # BrowseSection is referenced from kv/search_tab.kv before the screens package

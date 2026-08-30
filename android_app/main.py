@@ -12,6 +12,20 @@ if _ROOT not in sys.path:
 from kivy.utils import platform
 from kivymd.app import MDApp
 
+# KivyMD 2.0: RectangularRippleBehavior.__init__ creates an FBO with
+# self.size before the widget is laid out (size 0x0), which crashes on
+# some desktop OpenGL drivers.  Patch it to defer until the widget has
+# a real size.
+from kivymd.uix.behaviors.ripple_behavior import RectangularRippleBehavior
+_orig_init_fbos = RectangularRippleBehavior.init_fbos
+def _safe_init_fbos(self):
+    if self.width > 0 and self.height > 0:
+        _orig_init_fbos(self)
+    else:
+        from kivy.clock import Clock
+        Clock.schedule_once(lambda dt: _orig_init_fbos(self) if self.width > 0 and self.height > 0 else None, 0)
+RectangularRippleBehavior.init_fbos = _safe_init_fbos
+
 
 class NovelFetchApp(MDApp):
     title = "NovelFetch"
@@ -31,6 +45,11 @@ class NovelFetchApp(MDApp):
     def build(self):
         if platform == "android":
             os.chdir(self.user_data_dir)
+        else:
+            # Desktop: anchor CWD-relative data paths (novels/, app_settings.json,
+            # progress.json) to the repo root so the app works from any launch
+            # directory. All data modules use bare relative paths against CWD.
+            os.chdir(_ROOT)
 
         from screens.app_settings import load_settings
         self._app_settings = load_settings()

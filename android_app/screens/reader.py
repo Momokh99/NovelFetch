@@ -6,11 +6,15 @@ from kivy.clock import Clock
 from kivy.core.text import Label as CoreLabel
 
 from kivymd.app import MDApp
-from kivymd.uix.dialog import MDDialog
-from kivymd.uix.label import MDLabel
-from kivymd.uix.list import MDList, OneLineListItem
+from kivymd.uix.dialog import (
+    MDDialog,
+    MDDialogHeadlineText,
+    MDDialogContentContainer,
+)
+from kivy.uix.label import Label
+from kivymd.uix.list import MDList, MDListItem, MDListItemHeadlineText
 from kivymd.uix.screen import MDScreen
-from kivymd.uix.snackbar import MDSnackbar
+from screens.utils import _snack
 
 from progress import LANGUAGES, progress
 from async_runner import async_loop
@@ -24,9 +28,31 @@ try:
 except ImportError:
     _HAS_ARABIC_SHAPING = False
 
-_ARABIC_FONT = os.path.join(
-    os.path.dirname(os.path.dirname(__file__)), "data", "NotoNaskhArabic.ttf"
-)
+def _find_arabic_font():
+    """Locate a TTF covering Arabic (incl. U+FB50 presentation forms)
+    regardless of install layout: desktop dev tree, packaged APK
+    ('files/app/...'), or the Android system fonts. Returns ``''`` when none
+    is found so callers can fall back to bidi-only rendering instead of
+    showing tofu boxes."""
+    here = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    candidates = [
+        os.path.join(here, "data", "NotoNaskhArabic.ttf"),
+        os.path.join(os.getcwd(), "data", "NotoNaskhArabic.ttf"),
+        os.path.join(os.getcwd(), "android_app", "data", "NotoNaskhArabic.ttf"),
+        os.path.join(here, "NotoNaskhArabic.ttf"),
+        "/system/fonts/NotoNaskhArabic-Regular.ttf",  # Android
+        "/system/fonts/NotoNaskhArabicUI-Regular.ttf",
+        "/system/fonts/NotoNaskhArabic-Bold.ttf",
+        "/system/fonts/NotoNaskhArabic.ttf",
+    ]
+    for path in candidates:
+        if path and os.path.isfile(path):
+            return path
+    return ""
+
+
+_ARABIC_FONT = _find_arabic_font()
+_HAS_ARABIC_FONT = bool(_ARABIC_FONT)
 
 # Invisible RTL/LTR marks and embedding controls injected by Google
 # Translate.  Stripped before display so they don't render as tofu boxes.
@@ -146,6 +172,9 @@ class ReaderScreen(MDScreen):
         self._disp_key = None
         self._font_event = None
         self._meas_cache = {}
+        # Per-font cached single-word pixel widths.  Keyed by font so changing
+        # the size (A-/A+) picks up a fresh segment instead of clearing.
+        self._word_cache: dict[tuple, dict[str, float]] = {}
 
         from screens.app_settings import load_settings
         self._font_size = load_settings()["reader_font_size"]
@@ -361,7 +390,8 @@ class ReaderScreen(MDScreen):
     def _line_spacing(self):
         """Pixel distance between two consecutive rendered lines."""
         ar = self._shown_lang == "ar"
-        meas = self._measurer(_ARABIC_FONT if ar else "Roboto")
+        font = _ARABIC_FONT if (ar and _HAS_ARABIC_FONT) else "Roboto"
+        meas = self._measurer(font)
         one = meas.get_extents("Ag")[1]
         two = meas.get_extents("Ag\nAg")[1]
         spacing = (two - one) if two > one else 0
@@ -376,34 +406,20 @@ class ReaderScreen(MDScreen):
             return self._wrap_plain(text)
         return self._arabic_lines(text)
 
-    def _wrap_plain(self, text):
-        avail = self._avail_px()
-        if avail <= 0 or not text:
-            return text.split("\n")
-        meas = self._measurer("Roboto")
-        return _wrap_rtl_lines(
-            text,
-            lambda word: meas.get_extents(word)[0],
-            meas.get_extents(" ")[0],
-            avail)
+    def _measure_word(self, font_name):
+        """Return a cached single-word width measurer for a font.
 
-    def _arabic_lines(self, text):
-        """Wrap FIRST at the real pixel width, then bidi-flip per line.
-        Applying get_display() before wrapping makes Kivy wrap the
-        reversed string LTR, which scrambles line order and breaks
-        words across lines."""
-        if not _HAS_ARABIC_SHAPING:
-            return text.split("\n")
-        reshaped = arabic_reshaper.reshape(text)
-        avail = self._avail_px()
-        if avail <= 0:
-            # Width not laid out yet; flip whole paragraphs.
-            # _reflow() re-wraps once the real width is known.
-            return [get_display(p, base_dir="R") if p else p
-                    for p in reshaped.split("\n")]
-        meas = self._measurer(_ARABIC_FONT)
-        space_w = meas.get_extents(" ")[0]
-        cache = {}
+        CoreLabel.get_extents allocates/measures per call, and prose repeats
+        the same words constantly, so widths are memoized per (font, size).
+        The cache is capped per font to bound memory across chapters."""
+        key = (font_name, int(self._font_size))
+        cache = self._word_cache.get(key)
+        if cache is None:
+            cache = {}
+            self._word_cache[key] = cache
+        elif len(cache) > 20000:
+            cache.clear()
+        meas = self._measurer(font_name)
 
         def measure(word):
             w = cache.get(word)
@@ -412,16 +428,70 @@ class ReaderScreen(MDScreen):
                 cache[word] = w
             return w
 
-        lines = _wrap_rtl_lines(reshaped, measure, space_w, avail)
+        return measure
+
+    def _wrap_plain(self, text):
+        avail = self._avail_px()
+        if avail <= 0 or not text:
+            return text.split("\n")
+        measure = self._measure_word("Roboto")
+        return _wrap_rtl_lines(
+            text, measure, measure(" "), avail)
+
+    def _arabic_lines(self, text):
+        """Wrap FIRST at the real pixel width, then bidi-flip per line.
+        Applying get_display() before wrapping makes Kivy wrap the
+        reversed string LTR, which scrambles line order and breaks
+        words across lines."""
+        if not _HAS_ARABIC_SHAPING:
+            return text.split("\n")
+        avail = self._avail_px()
+        if avail <= 0:
+            # Width not laid out yet; flip whole paragraphs.
+            # _reflow() re-wraps once the real width is known.
+            reshaped = (arabic_reshaper.reshape(text)
+                        if _HAS_ARABIC_FONT else text)
+            return [get_display(p, base_dir="R") if p else p
+                    for p in reshaped.split("\n")]
+        if not _HAS_ARABIC_FONT:
+            # No presentation-form font packaged: reshaping would emit
+            # codepoints the fallback font can't draw, i.e. tofu boxes.
+            # Reorder bidi on the base Arabic and let the default font draw
+            # disconnected-but-legible letters instead.
+            measure = self._measure_word("Roboto")
+            lines = _wrap_rtl_lines(text, measure, measure(" "), avail)
+            return [get_display(l, base_dir="R") if l else l for l in lines]
+        reshaped = arabic_reshaper.reshape(text)
+        measure = self._measure_word(_ARABIC_FONT)
+        lines = _wrap_rtl_lines(reshaped, measure, measure(" "), avail)
         return [get_display(l, base_dir="R") if l else l for l in lines]
+
+    def _body_text_color(self):
+        """On-surface text color for the plain-Label body chunks.
+
+        A plain kivy.uix.label.Label is used for the reader body because
+        KivyMD's MDLabel silently overrides ``font_name`` back to the theme
+        default, which wrecks Arabic (presentation forms fall back to tofu
+        boxes in Roboto).  MDLabel derives its color from theme_cls, so the
+        plain Label has to do that explicitly."""
+        app = MDApp.get_running_app()
+        if app is not None:
+            try:
+                color = app.theme_cls.onSurfaceColor
+                if isinstance(color, (list, tuple)) and len(color) >= 3:
+                    return list(color)
+            except Exception:
+                pass
+        return [0.0, 0.0, 0.0, 1.0]
 
     def _make_chunk_label(self, text):
         ar = self._shown_lang == "ar"
-        lbl = MDLabel(
+        lbl = Label(
             text=text,
-            font_name=_ARABIC_FONT if ar else "Roboto",
+            font_name=(_ARABIC_FONT if ar and _HAS_ARABIC_FONT else "Roboto"),
             font_size=self._font_size,
             halign="right" if ar else "left",
+            color=self._body_text_color(),
         )
         lbl.size_hint_y = None
         lbl.text_size = (self._avail_px(), None)
@@ -486,9 +556,16 @@ class ReaderScreen(MDScreen):
             return
         rows = MDList()
         for label, code in LANGUAGES.items():
-            rows.add_widget(OneLineListItem(
-                text=label, on_release=lambda *_, c=code: self._start_translate(c)))
-        self._lang_dialog = MDDialog(title="Translate to", type="custom", content_cls=rows)
+            rows.add_widget(MDListItem(MDListItemHeadlineText(
+                text=label,
+            ), on_release=lambda *_, c=code: self._start_translate(c)))
+        self._lang_dialog = MDDialog(
+            MDDialogHeadlineText(
+                text="Translate to",
+                halign="left",
+            ),
+            MDDialogContentContainer(rows),
+        )
         self._lang_dialog.open()
 
     def _start_translate(self, code):
@@ -553,4 +630,4 @@ class ReaderScreen(MDScreen):
         MDApp.get_running_app().back()
 
     def _notify(self, text):
-        MDSnackbar(MDLabel(text=text)).open()
+        _snack(text)

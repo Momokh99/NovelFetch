@@ -16,13 +16,14 @@
             MDLabel:
                 id: title_label
                 bold: True
-                font_style: "Subtitle1"
+                font_style: "Title"
+                role: "small"
                 adaptive_height: True
                 shorten: True
                 shorten_from: "right"
                 max_lines: 1
 
-            MDProgressBar:
+            MDLinearProgressIndicator:
                 id: progress_bar
                 value: 0
                 max: 1
@@ -33,12 +34,14 @@
                 theme_text_color: "Secondary"
                 adaptive_height: True
 
-            MDRaisedButton:
+            MDButton:
                 id: cancel_btn
-                text: "Cancel"
-                icon: "close"
+                style: "filled"
                 size_hint: (1, None)
                 height: "40dp"
                 opacity: 0
                 disabled: True
                 on_release: root._cancel()
+
+                MDButtonText:
+                    text: "Cancel"

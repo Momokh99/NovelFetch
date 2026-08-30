@@ -24,14 +24,16 @@
                         id: title_label
                         text: ""
                         bold: True
-                        font_style: "Subtitle1"
+                        font_style: "Title"
+                        role: "small"
                         adaptive_height: True
 
                     MDLabel:
                         id: summary_label
                         text: ""
                         theme_text_color: "Secondary"
-                        font_style: "Caption"
+                        font_style: "Label"
+                        role: "medium"
                         adaptive_height: True
 
                 MDBoxLayout:
@@ -39,17 +41,20 @@
                     height: dp(48)
                     padding: (dp(16), 0, dp(16), 0)
 
-                    MDFlatButton:
+                    MDButton:
                         id: lang_btn
-                        text: "Translated to"
-                        theme_text_color: "Secondary"
+                        style: "text"
                         on_release: root._pick_language()
+
+                        MDButtonText:
+                            text: "Translated to"
 
                     MDLabel:
                         id: lang_label
                         text: "Arabic"
                         bold: True
-                        font_style: "Body1"
+                        font_style: "Body"
+                        role: "large"
                         halign: "left"
                         valign: "center"
 

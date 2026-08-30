@@ -3,7 +3,7 @@
 # --system-site-packages:
 #   sudo pacman -S python-kivy
 #   python3.14 -m venv --system-site-packages android_env
-kivymd==1.2.0
+kivymd==2.0.0
 httpx>=0.28.0
 curl_cffi>=0.15.0
 beautifulsoup4>=4.14.0

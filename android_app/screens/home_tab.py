@@ -5,11 +5,13 @@ from kivy.clock import Clock
 from kivy.metrics import dp, sp
 from kivy.properties import NumericProperty, StringProperty
 from kivy.uix.image import Image
+from kivy.uix.relativelayout import RelativeLayout
 from kivy.uix.scrollview import ScrollView
 
 from kivymd.app import MDApp
 from kivymd.uix.boxlayout import MDBoxLayout
 from kivymd.uix.fitimage import FitImage
+from kivymd.uix.card import MDCard
 from kivymd.uix.label import MDIcon, MDLabel
 from kivymd.uix.screen import MDScreen
 
@@ -18,7 +20,6 @@ from async_runner import async_loop
 from screens import utils                    # _get_source helper, meta
 from screens import theme
 from screens.app_settings import load_settings
-from screens.novel_list import _TapCard
 from screens.source_picker import open_source_picker
 
 _GRID_COLS = {"large": 1, "medium": 2, "small": 3}
@@ -125,7 +126,7 @@ class UnreadBadge(MDBoxLayout):
         if app is None:
             prim = (0.13, 0.55, 0.96, 1)
         else:
-            prim = list(app.theme_cls.primary_color)
+            prim = list(app.theme_cls.primaryColor)
         m = dp(2.5)  # inner padding floats the pill off the corner
         pill = min(dp(22), ph - 2 * m)
         x = self.parent.x - self.x + pw - m - pill
@@ -151,7 +152,7 @@ class ReadIndicator(MDBoxLayout):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self._label = MDLabel(
-            halign="left", valign="middle", font_style="Caption",
+            halign="left", valign="middle", font_style="Label", role="medium",
             bold=True, font_size=sp(10), theme_text_color="Secondary")
         self.add_widget(self._label)
         self.bind(
@@ -172,7 +173,7 @@ class ReadIndicator(MDBoxLayout):
         if app is None:
             prim = (0.13, 0.55, 0.96, 1)
         else:
-            prim = list(app.theme_cls.primary_color)
+            prim = list(app.theme_cls.primaryColor)
         w, h = self.width, self.height
         if w <= 0 or h <= 0:
             return
@@ -236,6 +237,8 @@ class HomeTab(MDScreen):
         self.topbar = self.ids.topbar
         self.topbar.set_actions([("book-open-variant", open_source_picker)])
         self.content_box = self.ids.content_box
+        self._lib_fp = None  # last _library_fingerprint() shown; skip rebuild
+        # when nothing changed on disk.
 
         # current_source is set in App.on_start(), AFTER build(). A zero-delay
         # Clock callback fires on the first frame — after on_start has run.
@@ -243,18 +246,24 @@ class HomeTab(MDScreen):
 
     # ---------- library ----------
 
-    def refresh_library(self):
+    def refresh_library(self, force=False):
         # Run the disk scan on the async loop to avoid blocking the UI thread
         # when the library is large (os.listdir + meta reads).
         async def coro():
             from screens import utils as u
-            return u._library_entries()
+            return u._library_entries_and_fingerprint()
 
-        def on_done(novels, error):
+        def on_done(payload, error):
             if error is not None:
                 import traceback
                 traceback.print_exception(type(error), error, error.__traceback__)
                 return
+            novels, fp = payload
+            if not force and fp == self._lib_fp:
+                # Nothing on disk changed since the last refresh: keep the
+                # current widget tree instead of rebuilding everything.
+                return
+            self._lib_fp = fp
             try:
                 self._build_library(novels)
             except Exception:
@@ -302,7 +311,7 @@ class HomeTab(MDScreen):
         return MDLabel(
             text=_count_summary(len(novels), n_tracked),
             theme_text_color="Secondary",
-            font_style="Caption", adaptive_height=True, size_hint_y=None)
+            font_style="Label", role="large", adaptive_height=True, size_hint_y=None)
 
     def _empty_state(self):
         box = MDBoxLayout(
@@ -317,7 +326,7 @@ class HomeTab(MDScreen):
         box.add_widget(MDLabel(
             text="Browse the hot list or search for novels\nto start reading.",
             halign="center", theme_text_color="Secondary",
-            font_style="Caption", adaptive_height=True))
+            font_style="Label", role="large", adaptive_height=True))
         return box
 
     def _cover_box(self, cover, width, radius=None, flex_h=None):
@@ -348,9 +357,13 @@ class HomeTab(MDScreen):
 
     def _hscroll(self, novels):
         """Horizontal scroll of cover cards (Continue Reading section)."""
+        card_w = dp(150)
+        gap = dp(8)
         row = MDBoxLayout(
             orientation="horizontal", adaptive_height=True,
-            spacing="8dp", padding=("8dp", 0, "8dp", 0))
+            size_hint_x=None, spacing=gap,
+            padding=(gap, 0, gap, 0))
+        row.width = len(novels) * card_w + max(len(novels) - 1, 0) * gap + gap * 2
         for n in novels:
             try:
                 row.add_widget(self._continue_card(n))
@@ -374,7 +387,7 @@ class HomeTab(MDScreen):
         count = meta.get("chapters") or n["count"]
         cover = os.path.join("novels", slug, meta["cover"]) if meta.get("cover") else ""
 
-        card = _TapCard(
+        card = MDCard(
             orientation="vertical", size_hint_y=None,
             height="260dp" if cover_frac >= 1 else "190dp",
             elevation=2, radius=theme.CARD_RADIUS,
@@ -399,27 +412,71 @@ class HomeTab(MDScreen):
         card.add_widget(cbox)
 
         card.add_widget(MDLabel(
-            text=title, bold=True, font_style="Caption",
-            size_hint_y=None, height="20dp", halign="center",
+            text=title, bold=True, font_style="Label", role="large",
+            size_hint_y=None, height="22dp", halign="center",
             shorten=True, shorten_from="right", max_lines=1))
         sub = ""
         if last is not None:
             sub = f"Ch. {last + 1}/{count if count else '?'}"
         card.add_widget(MDLabel(
             text=sub, theme_text_color="Secondary",
-            font_style="Caption", size_hint_y=None, height="16dp",
+            font_style="Label", role="large", size_hint_y=None, height="18dp",
             halign="center"))
 
-        card.on_release = lambda *_, s=slug, t=title, c=cover: \
-            self._open_library_novel(s, t, c)
+        card.on_release = lambda *_, s=slug, t=title, c=cover, l=last: \
+            self._resume_novel(s, t, c, l)
         return card
 
-    def _grid_cover(self, n, cols=2, height=260):
+    def _resume_novel(self, slug, title, cover, last):
+        """Continue Reading tap: jump straight into the reader at the
+        last-read chapter.
+
+        Downloaded novels open instantly from local files; novels that were
+        read online fall back to a cached online chapter list (the reader
+        loads whichever is available: translated → English → network). The
+        chapter list opens only when nothing usable is found."""
+        chapters = utils._local_chapters(slug)
+        if chapters and last is not None and 0 <= last < len(chapters):
+            self._goto_reader(slug, title, chapters, last)
+            return
+        source = utils._get_source(slug)
+        if source is None or getattr(source, "blocked", False):
+            self._open_library_novel(slug, title, cover)
+            return
+        raw = slug.split(":", 1)[-1] if ":" in slug else slug
+
+        async def coro():
+            try:
+                return await utils._get_chapters(source, raw)
+            except Exception:
+                return None
+
+        def on_done(chapters, error):
+            if (error is None and chapters
+                    and last is not None and 0 <= last < len(chapters)):
+                self._goto_reader(slug, title, chapters, last)
+                return
+            self._open_library_novel(slug, title, cover)
+
+        async_loop.run(coro(), on_done, timeout=30)
+
+    def _goto_reader(self, slug, title, chapters, start):
+        MDApp.get_running_app().goto(
+            "reader",
+            chapters=chapters,
+            slug=slug,
+            source=utils._get_source(slug),
+            title=title or slug,
+            start=start,
+        )
+
+    def _grid_cover(self, n, cols=2, height=260, meta=None):
         """Mihon-style library cover: a bare rounded image (no card chrome)
         with an unread-count badge in the corner. Fixed height per grid
         column so grid tiles stack reliably at any screen size."""
         slug = n["slug"]
-        meta = utils._read_meta(slug)
+        if meta is None:
+            meta = utils._read_meta(slug)
         cover = os.path.join("novels", slug, meta["cover"]) if meta.get("cover") else ""
         count = meta.get("chapters") or n["count"]
         last = progress.get_last(slug)
@@ -447,7 +504,7 @@ class HomeTab(MDScreen):
         title = meta.get("title") or n["title"]
         cover = os.path.join("novels", slug, meta["cover"]) if meta.get("cover") else ""
 
-        card = _TapCard(
+        card = MDCard(
             orientation="vertical", size_hint_y=None, adaptive_height=True,
             elevation=0, radius=[0] * 4, md_bg_color=[0, 0, 0, 0],
             padding=0, spacing="4dp")
@@ -456,9 +513,9 @@ class HomeTab(MDScreen):
         else:
             card.size_hint_x = None
             card.width = dp(150)
-        card.add_widget(self._grid_cover(n, cols=cols))
+        card.add_widget(self._grid_cover(n, cols=cols, meta=meta))
         card.add_widget(MDLabel(
-            text=title, bold=True, font_style="Caption", halign="center",
+            text=title, bold=True, font_style="Label", role="large", halign="center",
             size_hint_y=None, adaptive_height=True,
             shorten=True, shorten_from="right", max_lines=2))
         card.on_release = lambda *_, s=slug, t=title, c=cover: \
@@ -470,7 +527,10 @@ class HomeTab(MDScreen):
         meta = utils._read_meta(slug)
         title = meta.get("title") or n["title"]
         last = progress.get_last(slug)
-        tracked_only = utils._is_tracked(slug) and not utils._has_chapters(slug)
+        # Reuse the already-fetched meta instead of utils._is_tracked(slug),
+        # which would re-read meta.json from disk.
+        tracked_only = ((bool(meta.get("tracked")) or progress.is_tracked(slug))
+                        and not utils._has_chapters(slug))
 
         if tracked_only:
             sub = "Tracked · download to start"
@@ -484,7 +544,7 @@ class HomeTab(MDScreen):
         cover = os.path.join("novels", slug, meta["cover"]) if meta.get("cover") else ""
 
         height = dp(92) if compact else dp(124)
-        row = _TapCard(
+        row = MDCard(
             orientation="horizontal",
             size_hint_y=None, height=height,
             padding="12dp", spacing="16dp",
@@ -494,29 +554,34 @@ class HomeTab(MDScreen):
         cover_w = dp(48) if compact else dp(62)
         row.add_widget(self._cover_box(cover, cover_w))
 
-        texts = MDBoxLayout(orientation="vertical", size_hint_y=1, spacing="2dp")
-        title_h = "22dp" if compact else "30dp"
+        texts = MDBoxLayout(orientation="vertical", size_hint_y=None, adaptive_height=True, spacing="2dp",
+                            pos_hint={"center_x": 0.5, "center_y": 0.5})
+        title_h = "26dp" if compact else "30dp"
         texts.add_widget(MDLabel(
             text=title, bold=True,
-            font_style="Subtitle2" if compact else "Subtitle1",
+            font_style="Title", role="small",
             size_hint_y=None, height=title_h,
-            shorten=True, shorten_from="right", max_lines=1))
+            shorten=True, shorten_from="right", max_lines=1,
+            valign="top"))
         texts.add_widget(MDLabel(
             text=sub, theme_text_color="Secondary",
-            font_style="Caption", size_hint_y=None, height="18dp"))
+            font_style="Label", role="large", size_hint_y=None, height="20dp",
+            valign="top"))
 
         source = utils._get_source(slug)
         if source is not None and not tracked_only:
             if badge:
                 source_label = MDLabel(
                     text=source.label, theme_text_color="Secondary",
-                    font_style="Caption", size_hint_y=None, height="18dp")
+                    font_style="Label", role="large", size_hint_y=None, height="20dp",
+                    valign="top")
                 source_label.halign = "left"
                 texts.add_widget(source_label)
             else:
                 texts.add_widget(MDLabel(
                     text=source.label, theme_text_color="Secondary",
-                    font_style="Caption", size_hint_y=None, height="18dp"))
+                    font_style="Label", role="large", size_hint_y=None, height="20dp",
+                    valign="top"))
 
         if tracked_only:
             chip = MDBoxLayout(
@@ -525,7 +590,7 @@ class HomeTab(MDScreen):
             chip.add_widget(MDIcon(icon="bookmark", theme_text_color="Secondary"))
             chip.add_widget(MDLabel(
                 text="Tracked", theme_text_color="Secondary",
-                font_style="Caption", adaptive_height=True))
+                font_style="Label", role="medium", adaptive_height=True))
             row.add_widget(chip)
         elif last is not None and count:
             style = load_settings().get("read_indicator", "off")
@@ -542,12 +607,26 @@ class HomeTab(MDScreen):
                     import traceback
                     traceback.print_exc()
 
-        row.add_widget(texts)
+        texts_rl = RelativeLayout(size_hint=(1, 1))
+        texts_rl.add_widget(texts)
+        row.add_widget(texts_rl)
         row.on_release = lambda *_, s=slug, t=title, c=cover: \
             self._open_library_novel(s, t, c)
         return row
 
     # ---------- layout builders ----------
+
+    def _continue_list(self, novels):
+        """Library novels with reading progress, newest-read first (driven
+        by each novel's last-read timestamp, not library order)."""
+        by_slug = {n["slug"]: n for n in novels}
+        cont = [by_slug.pop(h["slug"]) for h in progress.get_history()
+                if h["slug"] in by_slug]
+        # Novels with progress but no read timestamp (legacy) trail the list.
+        cont += [n for n in novels
+                 if n["slug"] in by_slug
+                 and progress.get_last(n["slug"]) is not None]
+        return cont[:10]
 
     def _continue_section(self, cont):
         """Continue Reading: hscroll of cover cards, or an empty-state note."""
@@ -560,14 +639,14 @@ class HomeTab(MDScreen):
         else:
             sec.add_widget(MDLabel(
                 text="Nothing in progress yet.",
-                theme_text_color="Secondary", font_style="Caption",
+                theme_text_color="Secondary", font_style="Label", role="large",
                 adaptive_height=True, size_hint_y=None))
         return sec
 
     def _layout_A(self, novels):
         """Continue-Reading hscroll + library cover-card grid."""
         box = self.content_box
-        cont = [n for n in novels if progress.get_last(n["slug"]) is not None][:10]
+        cont = self._continue_list(novels)
         if load_settings().get("show_continue_reading", True):
             box.add_widget(self._continue_section(cont))
         box.add_widget(self._section_header("My Library"))
@@ -577,7 +656,7 @@ class HomeTab(MDScreen):
     def _layout_B(self, novels):
         """Continue-Reading hscroll + source-badge compact rows."""
         box = self.content_box
-        cont = [n for n in novels if progress.get_last(n["slug"]) is not None][:10]
+        cont = self._continue_list(novels)
         if load_settings().get("show_continue_reading", True):
             box.add_widget(self._continue_section(cont))
         box.add_widget(self._section_header("My Library"))

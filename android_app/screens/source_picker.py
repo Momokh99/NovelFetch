@@ -1,9 +1,13 @@
 from kivymd.app import MDApp
 from kivymd.uix.boxlayout import MDBoxLayout
-from kivymd.uix.dialog import MDDialog
+from kivymd.uix.dialog import (
+    MDDialog,
+    MDDialogHeadlineText,
+    MDDialogContentContainer,
+)
 from kivymd.uix.label import MDLabel
-from kivymd.uix.list import MDList, TwoLineAvatarListItem, IconLeftWidget
-from kivymd.uix.snackbar import MDSnackbar
+from kivymd.uix.list import MDList, MDListItem, MDListItemHeadlineText, MDListItemSupportingText, MDListItemLeadingIcon
+from screens.utils import _snack
 
 from sources import REGISTRY
 
@@ -22,7 +26,7 @@ def open_source_picker():
     def on_select(source):
         app.current_source = source
         _dialog.dismiss()
-        MDSnackbar(MDLabel(text=f"Switched to {source.label}")).open()
+        _snack(f"Switched to {source.label}")
         root = app.root
         if hasattr(root, "search_tab"):
             root.search_tab.refresh_source()
@@ -30,15 +34,22 @@ def open_source_picker():
     content = MDList()
     for source in REGISTRY.values():
         current = source is app.current_source   # identity compare is enough
-        item = TwoLineAvatarListItem(
-            text=("✓ " if current else "") + source.label,
-            secondary_text=f"{len(source.browse_urls)} browse lists · "
-                           f"{len(source.genres)} genres",
-            on_release=lambda *_, s=source: on_select(s),   # bind NOW, not later
+        item = MDListItem(
+            MDListItemLeadingIcon(icon="book-open-variant"),
+            MDListItemHeadlineText(text=("✓ " if current else "") + source.label),
+            MDListItemSupportingText(
+                text=f"{len(source.browse_urls)} browse lists · "
+                     f"{len(source.genres)} genres"),
+            on_release=lambda *_, s=source: on_select(s),
         )
-        item.add_widget(IconLeftWidget(icon="book-open-variant"))
         content.add_widget(item)
 
     global _dialog
-    _dialog = MDDialog(title="Select source", type="custom", content_cls=content)
+    _dialog = MDDialog(
+        MDDialogHeadlineText(
+            text="Select source",
+            halign="left",
+        ),
+        MDDialogContentContainer(content),
+    )
     _dialog.open()

@@ -1,70 +1,84 @@
-"""Tests for search_tab.py and novel_list.py pure logic — subtitle formatting."""
+"""Tests for search_tab.py and novel_list.py pure logic — subtitle formatting,
+header/footer text, clear-button visibility, and in-library detection."""
 
 
-def test_make_row_subtitle_with_author_and_latest():
-    novel = {"title": "X", "author": "Bob", "latest": "Ch. 10"}
-    sub = novel.get("author", "") or ""
-    if novel.get("latest"):
-        sub += f"  ·  {novel['latest']}"
-    assert sub == "Bob  ·  Ch. 10"
+def test_result_header_text():
+    query = "clara"
+    count = 12
+    header = f"{count} result(s) for '{query}'"
+    assert header == "12 result(s) for 'clara'"
 
 
-def test_make_row_subtitle_empty_author():
-    novel = {"title": "X", "author": "", "latest": "Ch. 5"}
-    sub = novel.get("author", "") or ""
-    if novel.get("latest"):
-        sub += f"  ·  {novel['latest']}"
-    assert sub == "  ·  Ch. 5"
+def test_result_header_single():
+    assert f"{1} result(s) for '{'x'}'" == "1 result(s) for 'x'"
 
 
-def test_make_row_subtitle_no_author_key():
-    novel = {"title": "X", "latest": "Ch. 3"}
-    sub = novel.get("author", "") or ""
-    if novel.get("latest"):
-        sub += f"  ·  {novel['latest']}"
-    assert sub == "  ·  Ch. 3"
+def test_searching_state_text():
+    query = "ghost"
+    state_text = f"Searching for '{query}'…"
+    assert state_text == "Searching for 'ghost'…"
 
 
-def test_make_row_subtitle_no_latest():
-    novel = {"title": "X", "author": "Alice"}
-    sub = novel.get("author", "") or ""
-    if novel.get("latest"):
-        sub += f"  ·  {novel['latest']}"
-    assert sub == "Alice"
+def test_empty_state_text():
+    query = "nothing"
+    state_text = f"No results for '{query}'"
+    assert state_text == "No results for 'nothing'"
 
 
-def test_make_row_subtitle_neither_author_nor_latest():
-    novel = {"title": "X"}
-    sub = novel.get("author", "") or ""
-    if novel.get("latest"):
-        sub += f"  ·  {novel['latest']}"
-    assert sub == ""
+def test_clear_button_hidden_when_empty():
+    text = ""
+    visible = bool(text.strip())
+    assert visible is False
 
 
-def test_novel_list_load_title_with_count():
-    novels = [{"title": "A"}, {"title": "B"}, {"title": "C"}]
-    title = "Search Results"
-    display = f"{title} ({len(novels)})" if novels else title
-    assert display == "Search Results (3)"
+def test_clear_button_shown_when_typing():
+    text = "hello"
+    visible = bool(text.strip())
+    assert visible is True
 
 
-def test_novel_list_load_title_empty():
-    novels = []
-    title = "Search Results"
-    display = f"{title} ({len(novels)})" if novels else title
-    assert display == "Search Results"
+def test_clear_button_ignores_whitespace():
+    text = "   "
+    visible = bool(text.strip())
+    assert visible is False
 
 
-def test_open_novel_slug_parsing():
-    slug = "royalroad:my-novel"
-    raw = slug.split(":", 1)[-1] if ":" in slug else slug
-    assert raw == "my-novel"
+def test_in_library_registered(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    import json, os
+    d = tmp_path / "novels" / "rr:my-novel"
+    d.mkdir(parents=True)
+    (d / "meta.json").write_text(json.dumps({"title": "My Novel"}))
+    from screens import utils
+    qualified = "rr:my-novel"
+    registered = bool(qualified and utils._read_meta(qualified))
+    assert registered is True
 
 
-def test_open_novel_no_prefix():
-    slug = "bare-slug"
-    raw = slug.split(":", 1)[-1] if ":" in slug else slug
-    assert raw == "bare-slug"
+def test_in_library_not_registered(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    from screens import utils
+    qualified = "rr:not-here"
+    registered = bool(qualified and utils._read_meta(qualified))
+    assert registered is False
+
+
+def test_update_footer_hidden_on_last_page():
+    page, pages = 5, 5
+    footer = "" if page >= pages else f"Page {page} of {pages}"
+    assert footer == ""
+
+
+def test_update_footer_shown_when_more():
+    page, pages = 1, 3
+    footer = "" if page >= pages else f"Page {page} of {pages}"
+    assert footer == "Page 1 of 3"
+
+
+def test_load_more_footer_loading():
+    page, pages = 1, 3
+    footer = f"Page {page} of {pages} · Loading more…"
+    assert footer == "Page 1 of 3 · Loading more…"
 
 
 def test_search_tab_clear_resets_state():
@@ -95,17 +109,14 @@ def test_search_tab_clear_resets_state():
 
 def test_search_tab_load_more_guards():
     """_load_more should not proceed when already busy or past last page."""
-    # Guard: already loading
     state1 = {"_load_more_busy": True, "_page": 1, "_pages": 5}
     should_load = not state1["_load_more_busy"] and state1["_page"] < state1["_pages"]
     assert not should_load
 
-    # Guard: past last page
     state2 = {"_load_more_busy": False, "_page": 5, "_pages": 5}
     should_load = not state2["_load_more_busy"] and state2["_page"] < state2["_pages"]
     assert not should_load
 
-    # OK to load
     state3 = {"_load_more_busy": False, "_page": 2, "_pages": 5}
     should_load = not state3["_load_more_busy"] and state3["_page"] < state3["_pages"]
     assert should_load

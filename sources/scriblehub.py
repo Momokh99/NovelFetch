@@ -12,6 +12,11 @@ class ScribbleHubSource(Source):
 
     def __init__(self):
         self._blocked = False
+        # Lazily-created, reused across calls (only when curl_cffi is
+        # unavailable) so the fallback path keeps one pooled/keep-alive
+        # connection instead of paying a fresh TCP+TLS handshake, plus a
+        # thread-pool hop, on every single request.
+        self._httpx_client = None
 
     @property
     def blocked(self) -> bool:
@@ -23,6 +28,14 @@ class ScribbleHubSource(Source):
             return "https://www.scribblehub.com" + url
         return url
 
+    def _get_httpx_client(self):
+        if self._httpx_client is None:
+            import httpx
+            self._httpx_client = httpx.AsyncClient(
+                follow_redirects=True, timeout=30,
+                headers=ScribbleHubSource._headers)
+        return self._httpx_client
+
     async def _fetch(self, url: str, data: Optional[dict] = None):
         # curl_cffi is a compiled AAPI extension that python-for-android cannot
         # cross-build reliably. Import lazily so the module (and the whole app)
@@ -31,17 +44,11 @@ class ScribbleHubSource(Source):
         try:
             from curl_cffi import requests as curl_requests
         except (ImportError, OSError):
-            import httpx
+            client = self._get_httpx_client()
             if data:
-                resp = await asyncio.to_thread(
-                    lambda: httpx.post(url, data=data, follow_redirects=True,
-                                       headers=ScribbleHubSource._headers,
-                                       timeout=30))
+                resp = await client.post(url, data=data)
             else:
-                resp = await asyncio.to_thread(
-                    lambda: httpx.get(url, follow_redirects=True,
-                                      headers=ScribbleHubSource._headers,
-                                      timeout=30))
+                resp = await client.get(url)
             if resp.status_code in (403, 429) or "Just a moment" in resp.text:
                 self._blocked = True
             return resp

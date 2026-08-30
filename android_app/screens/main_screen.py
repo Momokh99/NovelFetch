@@ -2,9 +2,11 @@ from kivy.core.window import Window
 from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.screenmanager import Screen, ScreenManager, SlideTransition
 from kivymd.app import MDApp
-from kivymd.uix.bottomnavigation import (
-    MDBottomNavigation,
-    MDBottomNavigationItem,
+from kivymd.uix.navigationbar import (
+    MDNavigationBar,
+    MDNavigationItem,
+    MDNavigationItemIcon,
+    MDNavigationItemLabel,
 )
 
 from screens.home_tab import HomeTab
@@ -16,6 +18,7 @@ from screens.novel_list import NovelListScreen
 from screens.chapter_list import ChapterListScreen
 from screens.reader import ReaderScreen
 from screens.download_dialog import DownloadProgressScreen
+from progress import progress
 from screens.download_picker import DownloadPickerScreen
 import screens.topbar  # noqa: F401  — registers TopBar in the Factory for KV
 
@@ -28,22 +31,34 @@ class MainScreen(BoxLayout):
         self._stack: list[str] = []   # navigation history; back() pops it
 
         tabs = Screen(name="tabs")
-        self.nav = MDBottomNavigation()
+        tabs_shell = BoxLayout(orientation="vertical")
+        self.tab_manager = ScreenManager()
+        self.nav = MDNavigationBar()
         self.home_tab = HomeTab()
         self.update_tab = UpdateTab()
         self.history_tab = HistoryTab()
-        self.nav.add_widget(MDBottomNavigationItem(
-            self.home_tab, name="home", text="Home", icon="home"))
+
+        self._nav_items = {}  # label text -> screen name
+
+        def _add_tab(content, name, label, icon):
+            content.name = name
+            self._nav_items[label] = name
+            self.tab_manager.add_widget(content)
+            item = MDNavigationItem()
+            item.add_widget(MDNavigationItemIcon(icon=icon))
+            item.add_widget(MDNavigationItemLabel(text=label))
+            self.nav.add_widget(item)
+
+        _add_tab(self.home_tab, "home", "Home", "home")
         self.search_tab = SearchTab()
-        self.nav.add_widget(MDBottomNavigationItem(
-            self.search_tab, name="search", text="Search", icon="magnify"))
-        self.nav.add_widget(MDBottomNavigationItem(
-            self.update_tab, name="updates", text="Updates", icon="update"))
-        self.nav.add_widget(MDBottomNavigationItem(
-            self.history_tab, name="history", text="History", icon="history"))
-        self.nav.add_widget(MDBottomNavigationItem(
-            SettingsTab(), name="settings", text="Settings", icon="cog"))
-        tabs.add_widget(self.nav)
+        _add_tab(self.search_tab, "search", "Search", "magnify")
+        _add_tab(self.update_tab, "updates", "Updates", "update")
+        _add_tab(self.history_tab, "history", "History", "history")
+        _add_tab(SettingsTab(), "settings", "Settings", "cog")
+
+        tabs_shell.add_widget(self.tab_manager)
+        tabs_shell.add_widget(self.nav)
+        tabs.add_widget(tabs_shell)
 
         self.manager.add_widget(tabs)
         self.manager.add_widget(NovelListScreen(name="novel_list"))
@@ -59,16 +74,16 @@ class MainScreen(BoxLayout):
 
         self.add_widget(self.manager)
 
-    def _on_switch_tabs(self, nav, item, name_tab):
-        # Kivy prepends the dispatcher instance, so args are (nav, item, name).
-        if name_tab == "home":
-            self.home_tab.refresh_library()
-        elif name_tab == "search":
-            self.search_tab.refresh_source()
-        elif name_tab == "updates":
-            self.update_tab.refresh()
-        elif name_tab == "history":
-            self.history_tab.refresh()
+    def _on_switch_tabs(self, bar, item, item_icon, item_text):
+        if item_text in self._nav_items:
+            name = self._nav_items[item_text]
+            self.tab_manager.current = name
+            if name == "home":
+                self.home_tab.refresh_library()
+            elif name == "search":
+                self.search_tab.refresh_source()
+            elif name == "history":
+                self.history_tab.refresh()
 
     def _on_key(self, window, key, scancode, codepoint, modifier):
         if key == 27:  # ESC / Android back
@@ -89,6 +104,7 @@ class MainScreen(BoxLayout):
 
     def back(self):
         """Pop back to the screen we came from (no reload, keeps scroll)."""
+        progress.flush()   # persist read marks on ANY exit (incl. OS/hardware back)
         target = self._stack.pop() if self._stack else "tabs"
         if target == "tabs":
             # Returning Home: re-scan so progress/downloads show immediately.
@@ -96,6 +112,8 @@ class MainScreen(BoxLayout):
         self.manager.transition = SlideTransition(direction="right")
         self.manager.current = target
 
-    def homescreen_library_refresh(self):
-        """Called after downloads so the Home tab's library repopulates."""
-        self.home_tab.refresh_library()
+    def homescreen_library_refresh(self, force=False):
+        """Called after downloads / settings changes so the Home tab's
+        library repopulates. pass force=True to rebuild even when nothing on
+        disk changed (e.g. layout/grid-size settings)."""
+        self.home_tab.refresh_library(force=force)

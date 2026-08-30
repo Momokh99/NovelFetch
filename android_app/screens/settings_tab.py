@@ -5,12 +5,18 @@ from kivy.clock import Clock
 from kivy.properties import StringProperty
 
 from kivymd.app import MDApp
-from kivymd.uix.button import MDFlatButton
-from kivymd.uix.dialog import MDDialog
+from kivymd.uix.button import MDButton, MDButtonText
+from kivymd.uix.dialog import (
+    MDDialog,
+    MDDialogHeadlineText,
+    MDDialogSupportingText,
+    MDDialogButtonContainer,
+    MDDialogContentContainer,
+)
 from kivymd.uix.label import MDLabel
-from kivymd.uix.list import MDList, OneLineAvatarIconListItem
+from kivymd.uix.list import MDList, MDListItem, MDListItemHeadlineText
 from kivymd.uix.screen import MDScreen
-from kivymd.uix.snackbar import MDSnackbar
+from screens.utils import _snack
 
 from progress import progress, _scan_library
 from async_runner import async_loop
@@ -88,6 +94,7 @@ class SettingsTab(MDScreen):
         self.grid_size_row = self.ids.grid_size_row
         self.home_layout_row = self.ids.home_layout_row
         self.continue_reading_switch = self.ids.continue_reading_switch
+        self.update_and_download_switch = self.ids.update_and_download_switch
         self.library_info = self.ids.library_info
         self.about_text = "NovelFetch\nSources: " + ", ".join(
             s.label for s in REGISTRY.values())
@@ -115,6 +122,8 @@ class SettingsTab(MDScreen):
             f"Home layout: {_home_layout_label(settings.get('home_layout', 'A'))}"
         self.continue_reading_switch.active = \
             bool(settings.get("show_continue_reading", True))
+        self.update_and_download_switch.active = \
+            bool(settings.get("update_and_download", False))
 
         async def coro():
             novels = _scan_library()
@@ -142,11 +151,17 @@ class SettingsTab(MDScreen):
     def _open_palette(self):
         rows = MDList()
         for color in PALETTES:
-            rows.add_widget(OneLineAvatarIconListItem(
+            rows.add_widget(MDListItem(MDListItemHeadlineText(
                 text=color,
-                on_release=lambda *_, c=color: self._set_palette(c)))
+            ), on_release=lambda *_, c=color: self._set_palette(c)))
         # Instance ref: a dialog with no strong ref can be GC'd mid-open.
-        self._palette_dialog = MDDialog(title="Primary color", type="custom", content_cls=rows)
+        self._palette_dialog = MDDialog(
+            MDDialogHeadlineText(
+                text="Primary color",
+                halign="left",
+            ),
+            MDDialogContentContainer(rows),
+        )
         self._palette_dialog.open()
 
     def _set_palette(self, color):
@@ -161,11 +176,16 @@ class SettingsTab(MDScreen):
         rows = MDList()
         current = load_settings().get("home_layout", "A")
         for key, label in HOME_LAYOUTS:
-            rows.add_widget(OneLineAvatarIconListItem(
+            rows.add_widget(MDListItem(MDListItemHeadlineText(
                 text=label + (" ✓" if key == current else ""),
-                on_release=lambda *_, k=key: self._set_home_layout(k)))
+            ), on_release=lambda *_, k=key: self._set_home_layout(k)))
         self._layout_dialog = MDDialog(
-            title="Home layout", type="custom", content_cls=rows)
+            MDDialogHeadlineText(
+                text="Home layout",
+                halign="left",
+            ),
+            MDDialogContentContainer(rows),
+        )
         self._layout_dialog.open()
 
     def _set_home_layout(self, key):
@@ -175,18 +195,24 @@ class SettingsTab(MDScreen):
         self._refresh()
         app = MDApp.get_running_app()
         if hasattr(app.root, "homescreen_library_refresh"):
-            app.root.homescreen_library_refresh()
+            # Disk didn't change — force the Home tab to apply the new layout.
+            app.root.homescreen_library_refresh(force=True)
         self._notify(f"Home layout: {_home_layout_label(key)}")
 
     def _open_read_indicator(self):
         rows = MDList()
         current = load_settings().get("read_indicator", "off")
         for key, label in READ_INDICATORS:
-            rows.add_widget(OneLineAvatarIconListItem(
+            rows.add_widget(MDListItem(MDListItemHeadlineText(
                 text=label + (" ✓" if key == current else ""),
-                on_release=lambda *_, k=key: self._set_read_indicator(k)))
+            ), on_release=lambda *_, k=key: self._set_read_indicator(k)))
         self._read_indicator_dialog = MDDialog(
-            title="Read indicator", type="custom", content_cls=rows)
+            MDDialogHeadlineText(
+                text="Read indicator",
+                halign="left",
+            ),
+            MDDialogContentContainer(rows),
+        )
         self._read_indicator_dialog.open()
 
     def _set_read_indicator(self, key):
@@ -203,11 +229,16 @@ class SettingsTab(MDScreen):
         rows = MDList()
         current = load_settings().get("card_grid_size", "medium")
         for key, label in CARD_GRID_SIZES:
-            rows.add_widget(OneLineAvatarIconListItem(
+            rows.add_widget(MDListItem(MDListItemHeadlineText(
                 text=label + (" ✓" if key == current else ""),
-                on_release=lambda *_, k=key: self._set_grid_size(k)))
+            ), on_release=lambda *_, k=key: self._set_grid_size(k)))
         self._grid_size_dialog = MDDialog(
-            title="Card grid size", type="custom", content_cls=rows)
+            MDDialogHeadlineText(
+                text="Card grid size",
+                halign="left",
+            ),
+            MDDialogContentContainer(rows),
+        )
         self._grid_size_dialog.open()
 
     def _set_grid_size(self, key):
@@ -217,7 +248,7 @@ class SettingsTab(MDScreen):
         self._refresh()
         app = MDApp.get_running_app()
         if hasattr(app.root, "homescreen_library_refresh"):
-            app.root.homescreen_library_refresh()
+            app.root.homescreen_library_refresh(force=True)
         self._notify(f"Card grid: {_grid_size_label(key)}")
 
     def _toggle_continue_reading(self):
@@ -227,20 +258,36 @@ class SettingsTab(MDScreen):
         save_settings(show_continue_reading=self.continue_reading_switch.active)
         self._refresh()
         if hasattr(app.root, "homescreen_library_refresh"):
-            app.root.homescreen_library_refresh()
+            app.root.homescreen_library_refresh(force=True)
         self._notify("Continue reading: on" if self.continue_reading_switch.active else "Continue reading: off")
+
+    def _toggle_update_and_download(self):
+        app = MDApp.get_running_app()
+        if self.update_and_download_switch.active == load_settings().get("update_and_download", False):
+            return  # programmatic sync from _refresh(), not a user toggle
+        save_settings(update_and_download=self.update_and_download_switch.active)
+        self._refresh()
+        self._notify("Update & download: on" if self.update_and_download_switch.active else "Update & download: off")
 
     # ---------- library ----------
 
     def _confirm_clear(self):
         confirm = MDDialog(
-            title="Clear library?",
-            text="This deletes every downloaded novel and reading progress.",
-            buttons=[
-                MDFlatButton(text="Cancel", on_release=lambda *_: confirm.dismiss()),
-                MDFlatButton(text="Delete",
-                             on_release=lambda *_: self._do_clear(confirm)),
-            ],
+            MDDialogHeadlineText(
+                text="Clear library?",
+                halign="left",
+            ),
+            MDDialogSupportingText(
+                text="This deletes every downloaded novel and reading progress.",
+                halign="left",
+            ),
+            MDDialogButtonContainer(
+                MDButton(MDButtonText(text="Cancel"), style="text",
+                         on_release=lambda *_: confirm.dismiss()),
+                MDButton(MDButtonText(text="Delete"), style="text",
+                         on_release=lambda *_: self._do_clear(confirm)),
+                spacing="8dp",
+            ),
         )
         self._clear_dialog = confirm
         confirm.open()
@@ -266,4 +313,4 @@ class SettingsTab(MDScreen):
     # ---------- helpers ----------
 
     def _notify(self, text):
-        MDSnackbar(MDLabel(text=text)).open()
+        _snack(text)

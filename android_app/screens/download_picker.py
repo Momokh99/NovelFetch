@@ -1,10 +1,14 @@
 from kivymd.app import MDApp
-from kivymd.uix.button import MDFlatButton
-from kivymd.uix.dialog import MDDialog
+from kivymd.uix.button import MDButton, MDButtonText
+from kivymd.uix.dialog import (
+    MDDialog,
+    MDDialogHeadlineText,
+    MDDialogContentContainer,
+)
 from kivymd.uix.label import MDLabel
-from kivymd.uix.list import MDList, OneLineListItem
+from kivymd.uix.list import MDList, MDListItem, MDListItemHeadlineText
 from kivymd.uix.screen import MDScreen
-from kivymd.uix.snackbar import MDSnackbar
+from screens.utils import _snack
 
 from progress import LANGUAGES, progress
 from screens import utils
@@ -70,20 +74,17 @@ class DownloadPickerScreen(MDScreen):
             self.list_view.add_widget(self._section_header("Original"))
             for n in (5, 10, 25):
                 subset = remaining[:n]
-                self.list_view.add_widget(OneLineListItem(
+                self.list_view.add_widget(MDListItem(MDListItemHeadlineText(
                     text=f"Next {len(subset)}",
-                    on_release=lambda *_, s=subset: self._go(s),
-                ))
+                ), on_release=lambda *_, s=subset: self._go(s)))
             if unread:
-                self.list_view.add_widget(OneLineListItem(
+                self.list_view.add_widget(MDListItem(MDListItemHeadlineText(
                     text=f"All unread ({len(unread)})",
-                    on_release=lambda *_, s=unread: self._go(s),
-                ))
+                ), on_release=lambda *_, s=unread: self._go(s)))
             if self.chapters:
-                self.list_view.add_widget(OneLineListItem(
+                self.list_view.add_widget(MDListItem(MDListItemHeadlineText(
                     text=f"All ({len(self.chapters)})",
-                    on_release=lambda *_, s=self.chapters: self._go(s),
-                ))
+                ), on_release=lambda *_, s=self.chapters: self._go(s)))
 
         # --- Translated ---
         if self.chapters:
@@ -93,20 +94,17 @@ class DownloadPickerScreen(MDScreen):
             for n in (5, 10, 25):
                 subset = remaining[:n] if remaining else []
                 if subset:
-                    self.list_view.add_widget(OneLineListItem(
+                    self.list_view.add_widget(MDListItem(MDListItemHeadlineText(
                         text=f"Next {len(subset)}",
-                        on_release=lambda *_, s=subset: self._go_tr(s),
-                    ))
+                    ), on_release=lambda *_, s=subset: self._go_tr(s)))
             if unread:
-                self.list_view.add_widget(OneLineListItem(
+                self.list_view.add_widget(MDListItem(MDListItemHeadlineText(
                     text=f"All unread ({len(unread)})",
-                    on_release=lambda *_, s=unread: self._go_tr(s),
-                ))
+                ), on_release=lambda *_, s=unread: self._go_tr(s)))
             if self.chapters:
-                self.list_view.add_widget(OneLineListItem(
+                self.list_view.add_widget(MDListItem(MDListItemHeadlineText(
                     text=f"All ({len(self.chapters)})",
-                    on_release=lambda *_, s=self.chapters: self._go_tr(s),
-                ))
+                ), on_release=lambda *_, s=self.chapters: self._go_tr(s)))
 
     @staticmethod
     def _section_header(text):
@@ -117,7 +115,7 @@ class DownloadPickerScreen(MDScreen):
             padding=(dp(16), dp(12), dp(16), 0))
         box.add_widget(MDLabel(
             text=text, bold=True, theme_text_color="Secondary",
-            font_style="Caption"))
+            font_style="Label", role="medium"))
         return box
 
     def _go(self, subset):
@@ -145,11 +143,16 @@ class DownloadPickerScreen(MDScreen):
     def _pick_language(self):
         rows = MDList()
         for label, code in LANGUAGES.items():
-            rows.add_widget(OneLineListItem(
+            rows.add_widget(MDListItem(MDListItemHeadlineText(
                 text=label,
-                on_release=lambda *_, c=code, l=label: self._set_lang(c, l)))
+            ), on_release=lambda *_, c=code, l=label: self._set_lang(c, l)))
         self._lang_dialog = MDDialog(
-            title="Translate to", type="custom", content_cls=rows)
+            MDDialogHeadlineText(
+                text="Translate to",
+                halign="left",
+            ),
+            MDDialogContentContainer(rows),
+        )
         self._lang_dialog.open()
 
     def _set_lang(self, code, label):
@@ -160,4 +163,4 @@ class DownloadPickerScreen(MDScreen):
         self._rebuild()
 
     def _notify(self, text):
-        MDSnackbar(MDLabel(text=text)).open()
+        _snack(text)

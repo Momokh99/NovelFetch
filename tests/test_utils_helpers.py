@@ -173,3 +173,35 @@ def test_cached_cover_different_urls_different_paths():
     a = utils._cover_cache_path("http://x/a.png")
     b = utils._cover_cache_path("http://y/a.png")
     assert a != b
+
+
+# ---- time-ago ----
+
+def test_time_ago_empty_or_falsy():
+    assert utils._time_ago(None) == ""
+    assert utils._time_ago(0) == ""
+
+
+def test_time_ago_units():
+    now = utils.time.time()
+    assert utils._time_ago(now - 30) == "just now"
+    assert utils._time_ago(now - 3600) == "1h ago"
+    assert utils._time_ago(now - 172800) == "2d ago"
+    assert utils._time_ago(now - 2 * 604800) == "2w ago"
+
+
+# ---- last-updated meta helpers ----
+
+def test_last_updated_roundtrip(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    d = tmp_path / "novels" / "rr:x"
+    d.mkdir(parents=True)
+    assert utils._read_last_updated("rr:x") == 0
+    utils._write_last_updated("rr:x", 12345)
+    assert utils._read_last_updated("rr:x") == 12345
+    assert utils._read_meta("rr:x")["last_updated"] == 12345
+
+
+def test_last_updated_read_missing(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    assert utils._read_last_updated("nope") == 0

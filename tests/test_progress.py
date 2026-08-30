@@ -70,6 +70,29 @@ def test_clear_history_on_empty_tracker(tracker):
     assert tracker.get_history() == []
 
 
+def test_remove_history_entry_only_affects_one(tracker, mock_time):
+    tracker.mark_seen("a", 1)
+    tracker.mark_seen("b", 2)
+    tracker.remove_history_entry("a")
+    assert tracker.get_last("a") is None
+    assert tracker.get_last("b") == 2
+    assert [h["slug"] for h in tracker.get_history()] == ["b"]
+
+
+def test_remove_history_entry_keeps_progress_and_tracking(tracker, mock_time):
+    tracker.mark_seen("a", 5)
+    tracker.track("a", "Novel A")
+    tracker.remove_history_entry("a")
+    assert tracker.get_last("a") is None
+    assert tracker.get_seen("a") == {5}
+    assert tracker.is_tracked("a")
+
+
+def test_remove_history_entry_nonexistent_is_noop(tracker):
+    tracker.remove_history_entry("ghost")
+    assert tracker.get_last("ghost") is None
+
+
 def test_remove_forgets_entry(tracker, mock_time):
     tracker.mark_seen("a", 1)
     tracker.remove("a")

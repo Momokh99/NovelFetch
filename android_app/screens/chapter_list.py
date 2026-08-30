@@ -6,18 +6,24 @@ from kivy.uix.image import AsyncImage
 
 from kivymd.app import MDApp
 from kivymd.uix.boxlayout import MDBoxLayout
-from kivymd.uix.button import MDFlatButton, MDRaisedButton
-from kivymd.uix.dialog import MDDialog
+from kivymd.uix.button import MDButton, MDButtonText
+from kivymd.uix.dialog import (
+    MDDialog,
+    MDDialogHeadlineText,
+    MDDialogSupportingText,
+    MDDialogButtonContainer,
+    MDDialogContentContainer,
+)
 from kivymd.uix.label import MDLabel
 from kivymd.uix.list import (
     MDList,
-    OneLineAvatarIconListItem,
-    OneLineListItem,
-    CheckboxLeftWidget,
-    IconLeftWidget,
+    MDListItem,
+    MDListItemHeadlineText,
+    MDListItemLeadingIcon,
+    MDListItemTrailingCheckbox,
 )
 from kivymd.uix.screen import MDScreen
-from kivymd.uix.snackbar import MDSnackbar
+from screens.utils import _snack
 
 from progress import progress
 from async_runner import async_loop
@@ -151,27 +157,27 @@ class ChapterListScreen(MDScreen):
         downloaded = self._downloaded
         if self._select_mode:
             prefix = "✓ " if i in seen else "  "
-            item = OneLineAvatarIconListItem(
-                text=prefix + ch["title"],
+            item = MDListItem(
+                MDListItemHeadlineText(text=prefix + ch["title"]),
                 on_release=lambda *_, idx=i: self._toggle_selection(idx),
             )
-            cbx = CheckboxLeftWidget(active=i in self._selected)
+            cbx = MDListItemTrailingCheckbox(active=i in self._selected)
             cbx.bind(on_active=lambda w, val, idx=i: self._toggle_selection(idx, active=val))
             item.add_widget(cbx)
         else:
-            item = OneLineAvatarIconListItem(
-                text=ch["title"],
+            item = MDListItem(
+                MDListItemHeadlineText(text=ch["title"]),
                 on_release=lambda *_, idx=i: self._open(idx),
             )
             if i in seen:
-                item.add_widget(IconLeftWidget(
+                item.add_widget(MDListItemLeadingIcon(
                     icon="check-circle", theme_text_color="Secondary"))
                 item.theme_text_color = "Secondary"
             elif i in downloaded:
-                item.add_widget(IconLeftWidget(
+                item.add_widget(MDListItemLeadingIcon(
                     icon="download-circle", theme_text_color="Secondary"))
             else:
-                item.add_widget(IconLeftWidget(icon="circle-outline"))
+                item.add_widget(MDListItemLeadingIcon(icon="circle-outline"))
         item._idx = i
         return item
 
@@ -244,11 +250,11 @@ class ChapterListScreen(MDScreen):
 
     def _sync_checkboxes(self):
         # Sync every row's checkbox to _selected without re-triggering handlers.
-        # KivyMD nests the CheckboxLeftWidget inside the row, so search the
+        # KivyMD nests the MDListItemTrailingCheckbox inside the row, so search the
         # subtree rather than assuming it is a direct child.
         def find_cbx(widget):
             for c in widget.children:
-                if isinstance(c, CheckboxLeftWidget):
+                if isinstance(c, MDListItemTrailingCheckbox):
                     return c
                 found = find_cbx(c)
                 if found is not None:
@@ -280,7 +286,7 @@ class ChapterListScreen(MDScreen):
             return
         raw = self.slug.split(":", 1)[-1] if ":" in self.slug else self.slug
         if utils._read_meta(self.slug):
-            MDSnackbar(MDLabel(text="Already in your library.")).open()
+            _snack("Already in your library.")
             return
 
         async def coro():
@@ -290,7 +296,7 @@ class ChapterListScreen(MDScreen):
 
         def on_done(result, error):
             if error is not None:
-                MDSnackbar(MDLabel(text="Could not add. Check connection.")).open()
+                _snack("Could not add. Check connection.")
                 return
             self._bookmark_disabled = True
             self.topbar.set_actions([
@@ -298,7 +304,7 @@ class ChapterListScreen(MDScreen):
                 ("select-multiple", self._toggle_select_mode),
                 ("dots-vertical", self._open_overflow),
             ])
-            MDSnackbar(MDLabel(text="Added to library.")).open()
+            _snack("Added to library.")
             root = MDApp.get_running_app().root
             if hasattr(root, "homescreen_library_refresh"):
                 root.homescreen_library_refresh()
@@ -311,29 +317,31 @@ class ChapterListScreen(MDScreen):
             dialog.dismiss()
         rows = MDList()
         if self.chapters:
-            rows.add_widget(OneLineListItem(
+            rows.add_widget(MDListItem(MDListItemHeadlineText(
                 text="Download…",
-                on_release=lambda *_: self._open_picker(),
-            ))
+            ), on_release=lambda *_: self._open_picker()))
         meta = utils._read_meta(self.slug) if self.slug else {}
         if meta:
             if meta.get("tracked") and not utils._has_chapters(self.slug):
                 # Tracked-only: nothing downloaded yet -> Remove instead of Delete.
-                rows.add_widget(OneLineListItem(
+                rows.add_widget(MDListItem(MDListItemHeadlineText(
                     text="Remove from library",
-                    on_release=lambda *_: self._remove_novel(),
-                ))
+                ), on_release=lambda *_: self._remove_novel()))
             else:
-                rows.add_widget(OneLineListItem(
+                rows.add_widget(MDListItem(MDListItemHeadlineText(
                     text="Export EPUB",
-                    on_release=lambda *_: self._export_epub(),
-                ))
-                rows.add_widget(OneLineListItem(
+                ), on_release=lambda *_: self._export_epub()))
+                rows.add_widget(MDListItem(MDListItemHeadlineText(
                     text="Delete",
-                    on_release=lambda *_: self._delete_novel(),
-                ))
+                ), on_release=lambda *_: self._delete_novel()))
         # Instance ref: a dialog with no strong ref can be GC'd mid-open.
-        self._overflow = MDDialog(title="Options", type="custom", content_cls=rows)
+        self._overflow = MDDialog(
+            MDDialogHeadlineText(
+                text="Options",
+                halign="left",
+            ),
+            MDDialogContentContainer(rows),
+        )
         self._overflow.open()
 
     def _export_epub(self):
@@ -366,14 +374,22 @@ class ChapterListScreen(MDScreen):
         if dialog is not None:
             dialog.dismiss()
         confirm = MDDialog(
-            title=f"Delete {self._novel_title}?",
-            text="The files will be removed but the novel stays tracked, so "
-                 "you can re-download it later from Updates.",
-            buttons=[
-                MDFlatButton(text="Cancel", on_release=lambda *_: confirm.dismiss()),
-                MDFlatButton(text="Delete",
-                             on_release=lambda *_: self._do_delete_novel(confirm, untrack=False)),
-            ],
+            MDDialogHeadlineText(
+                text=f"Delete {self._novel_title}?",
+                halign="left",
+            ),
+            MDDialogSupportingText(
+                text="The files will be removed but the novel stays tracked, so "
+                     "you can re-download it later from Updates.",
+                halign="left",
+            ),
+            MDDialogButtonContainer(
+                MDButton(MDButtonText(text="Cancel"), style="text",
+                         on_release=lambda *_: confirm.dismiss()),
+                MDButton(MDButtonText(text="Delete"), style="text",
+                         on_release=lambda *_: self._do_delete_novel(confirm, untrack=False)),
+                spacing="8dp",
+            ),
         )
         confirm.open()
 
@@ -382,13 +398,21 @@ class ChapterListScreen(MDScreen):
         if dialog is not None:
             dialog.dismiss()
         confirm = MDDialog(
-            title=f"Remove {self._novel_title} from library?",
-            text="This removes the novel and its tracking entirely.",
-            buttons=[
-                MDFlatButton(text="Cancel", on_release=lambda *_: confirm.dismiss()),
-                MDFlatButton(text="Remove",
-                             on_release=lambda *_: self._do_delete_novel(confirm, untrack=True)),
-            ],
+            MDDialogHeadlineText(
+                text=f"Remove {self._novel_title} from library?",
+                halign="left",
+            ),
+            MDDialogSupportingText(
+                text="This removes the novel and its tracking entirely.",
+                halign="left",
+            ),
+            MDDialogButtonContainer(
+                MDButton(MDButtonText(text="Cancel"), style="text",
+                         on_release=lambda *_: confirm.dismiss()),
+                MDButton(MDButtonText(text="Remove"), style="text",
+                         on_release=lambda *_: self._do_delete_novel(confirm, untrack=True)),
+                spacing="8dp",
+            ),
         )
         confirm.open()
 
@@ -443,4 +467,4 @@ class ChapterListScreen(MDScreen):
         MDApp.get_running_app().back()
 
     def _notify(self, text):
-        MDSnackbar(MDLabel(text=text)).open()
+        _snack(text)

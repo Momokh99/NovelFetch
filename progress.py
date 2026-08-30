@@ -100,6 +100,16 @@ class ProgressTracker:
                     v.pop("last_time", None)
             self._dirty = True
 
+    def remove_history_entry(self, slug):
+        """Forget a single novel's reading history (last-chapter + timestamp)
+        while keeping its progress marks and tracking."""
+        with self._lock:
+            v = self._data.get(slug)
+            if isinstance(v, dict):
+                v.pop("last", None)
+                v.pop("last_time", None)
+                self._dirty = True
+
     def remove(self, slug):
         """Forget a novel entirely (e.g. when its folder is deleted)."""
         with self._lock:

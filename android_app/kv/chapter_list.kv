@@ -32,9 +32,10 @@
                             id: title_label
                             text: ""
                             bold: True
-                            font_style: "Subtitle1"
+                            font_style: "Title"
+                            role: "medium"
                             size_hint_y: None
-                            height: "28dp"
+                            height: "32dp"
                             shorten: True
                             shorten_from: "right"
                             max_lines: 2
@@ -43,9 +44,10 @@
                             id: info_label
                             text: ""
                             theme_text_color: "Secondary"
-                            font_style: "Caption"
+                            font_style: "Label"
+                            role: "large"
                             size_hint_y: None
-                            height: "20dp"
+                            height: "22dp"
 
                     AsyncImage:
                         id: cover_img
@@ -55,24 +57,30 @@
                         keep_ratio: True
                         allow_stretch: True
 
-                MDProgressBar:
+                MDLinearProgressIndicator:
                     id: loading_bar
                     indeterminate: True
                     opacity: 0
                     size_hint_y: None
                     height: "4dp"
 
-                MDRaisedButton:
+                MDButton:
                     id: continue_btn
-                    text: "Continue"
+                    style: "filled"
                     size_hint: (1, None)
                     height: "48dp"
 
-                MDRaisedButton:
+                    MDButtonText:
+                        text: "Continue"
+
+                MDButton:
                     id: download_btn
-                    text: "Download selected"
+                    style: "filled"
                     size_hint: (1, None)
                     height: "48dp"
+
+                    MDButtonText:
+                        text: "Download selected"
 
                 MDList:
                     id: list_view

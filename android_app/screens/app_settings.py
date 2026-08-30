@@ -14,6 +14,7 @@ _DEFAULTS = {
     "read_indicator": "off",
     "card_grid_size": "medium",
     "show_continue_reading": True,
+    "update_and_download": False,
 }
 
 

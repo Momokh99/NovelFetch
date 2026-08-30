@@ -49,3 +49,12 @@ def surface_color():
     """Neutral surface used for cover placeholders, slightly lifted from the
     screen background so cards read as distinct panels."""
     return _DARK_SURFACE if _is_dark() else _LIGHT_SURFACE
+
+
+_DARK_HIGHLIGHT = hsl_rgba(210, 25, 16)
+_LIGHT_HIGHLIGHT = hsl_rgba(210, 60, 96)
+
+
+def library_highlight():
+    """Subtle accent-tinted background for rows already in the library."""
+    return _DARK_HIGHLIGHT if _is_dark() else _LIGHT_HIGHLIGHT

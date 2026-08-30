@@ -1,5 +1,6 @@
+import asyncio
 from sources import REGISTRY
-from progress import LANGUAGES
+from progress import LANGUAGES, PROGRESS_FILE
 import re
 import shutil
 import time
@@ -8,13 +9,13 @@ import os
 
 from kivymd.app import MDApp
 from kivymd.uix.button import MDIconButton
-from kivymd.uix.label import MDLabel
-from kivymd.uix.snackbar import MDSnackbar
+from kivymd.uix.snackbar import MDSnackbar, MDSnackbarText
 
 from async_runner import async_loop
 
 _LANG_CODES = set(LANGUAGES.values())
 _TRANSL_SUFFIX_RE = re.compile(r"^(.+)_([a-z]{2}(?:-[a-z]{2})?)\.txt$")
+_DIGIT_PREFIX_RE = re.compile(r"^\d+/")
 
 
 def _is_translation_file(fname):
@@ -26,8 +27,59 @@ def _is_translation_file(fname):
 
 
 def _snack(text):
-    """KivyMD 1.2.0 MDSnackbar takes child widgets, not a text kwarg."""
-    MDSnackbar(MDLabel(text=text)).open()
+    MDSnackbar(MDSnackbarText(text=text)).open()
+
+def _time_ago(timestamp):
+    """'just now / 5m ago / 3h ago / 2d ago / 4w ago' from a unix timestamp."""
+    if not timestamp:
+        return ""
+    delta = time.time() - timestamp
+    if delta < 60:
+        return "just now"
+    minutes = int(delta // 60)
+    if minutes < 60:
+        return f"{minutes}m ago"
+    hours = int(minutes // 60)
+    if hours < 24:
+        return f"{hours}h ago"
+    days = int(hours // 24)
+    if days < 7:
+        return f"{days}d ago"
+    weeks = int(days // 7)
+    return f"{weeks}w ago"
+
+
+def _read_last_updated(slug):
+    """Unix timestamp of the last update check that found new chapters, or 0."""
+    try:
+        return int(_read_meta(slug).get("last_updated") or 0)
+    except (OSError, ValueError):
+        return 0
+
+
+def _write_last_updated(slug, ts):
+    """Persist the last-updated timestamp into the novel's meta.json."""
+    try:
+        meta = dict(_read_meta(slug))
+        meta["last_updated"] = int(ts)
+        os.makedirs(os.path.join("novels", slug), exist_ok=True)
+        with open(os.path.join("novels", slug, "meta.json"), "w") as f:
+            json.dump(meta, f)
+    except OSError:
+        pass
+
+
+def _update_chapters_meta(slug, count, ts):
+    """Update meta.json with the source's total chapter count and a timestamp."""
+    try:
+        meta = dict(_read_meta(slug))
+        meta["chapters"] = int(count)
+        meta["last_updated"] = int(ts)
+        os.makedirs(os.path.join("novels", slug), exist_ok=True)
+        with open(os.path.join("novels", slug, "meta.json"), "w") as f:
+            json.dump(meta, f)
+    except OSError:
+        pass
 
 
 def _chapter_sort_key(fname):
@@ -51,6 +103,30 @@ def _local_chapters(slug):
         title = os.path.basename(f).replace(".txt", "").replace("_", " ").title()
         chapters.append({"num": i, "title": title, "url": ""})
     return chapters
+
+
+def _local_chapter_count(slug):
+    """Distinct downloaded chapters for a novel, counting the novel's own
+    translation-language files as real chapters (so an update check does not
+    re-report them as new). Canonical and translated copies of the same
+    chapter count once."""
+    chap_dir = os.path.join("novels", slug)
+    if not os.path.isdir(chap_dir):
+        return 0
+    lang = _meta_lang(slug)
+    bases = set()
+    try:
+        for f in os.listdir(chap_dir):
+            if not f.endswith(".txt"):
+                continue
+            tl = _is_translation_file(f)
+            if tl is None:
+                bases.add(f)
+            elif tl == lang:
+                bases.add(f[: -len("_%s.txt" % lang)] + ".txt")
+    except OSError:
+        return 0
+    return len(bases)
 
 
 def _delete_library(slug, untrack=False):
@@ -117,6 +193,37 @@ def _has_chapters(slug):
                for name in os.listdir(path))
 
 
+def _missing_chapters(chapters, slug, lang):
+    """Return chapters whose local file is not present under novels/{slug}."""
+    lang = lang or ""
+    chap_dir = os.path.join("novels", slug)
+    if not os.path.isdir(chap_dir):
+        return list(chapters)
+    missing = []
+    for ch in chapters:
+        safe = ch["title"].replace("/", "-").replace(" ", "_")
+        if lang:
+            path = os.path.join(chap_dir, f"{safe}_{lang}.txt")
+        else:
+            path = os.path.join(chap_dir, f"{safe}.txt")
+        if not os.path.exists(path):
+            missing.append(ch)
+    return missing
+
+
+def _display_title(slug, fallback):
+    """Clean novel title for UI display: prefer meta title, then strip
+    the numeric id-prefix from slug-derived fallbacks (e.g. '136609/Ashland'
+    → 'Ashland')."""
+    meta_title = _read_meta(slug).get("title")
+    if meta_title and not _DIGIT_PREFIX_RE.match(meta_title):
+        return meta_title
+    raw = slug.split(":", 1)[-1] if ":" in slug else slug
+    if _DIGIT_PREFIX_RE.match(raw):
+        raw = raw.split("/", 1)[1]
+    return raw.replace("-", " ").title()
+
+
 def _is_tracked(slug):
     """True if a slug is registered as tracked, via meta.json or the
     tracking registry (which persists even after the folder is deleted)."""
@@ -137,6 +244,65 @@ def _library_entries():
             entries.append({"slug": t["slug"], "title": t["title"], "count": 0})
     entries.sort(key=lambda n: n["slug"])
     return entries
+
+
+def _library_sig_rows(entries):
+    """Per-folder (slug, count, dir_mtime, top_mtime) rows used by
+    _library_fingerprint(), built from an already-scanned entries list
+    instead of walking novels/ again."""
+    novels_dir = "novels"
+    sig = []
+    for n in entries:
+        slug = n["slug"]
+        folder = os.path.join(novels_dir, slug)
+        try:
+            files = os.listdir(folder)
+        except OSError:
+            continue
+        # Directory mtime bumps when chapter files appear/disappear; meta.json
+        # and cover.* mtimes catch in-place rewrites (title/cover updates).
+        top = 0.0
+        for f in files:
+            if f != "meta.json" and not f.startswith("cover."):
+                continue
+            try:
+                top = max(top, round(os.path.getmtime(
+                    os.path.join(folder, f)), 6))
+            except OSError:
+                pass
+        try:
+            dir_mtime = round(os.stat(folder).st_mtime, 6)
+        except OSError:
+            dir_mtime = 0.0
+        sig.append((slug, n["count"], dir_mtime, top))
+    sig.sort()
+    return sig
+
+
+def _library_entries_and_fingerprint():
+    """Single-pass version of _library_entries() + _library_fingerprint():
+    scans the novels/ tree once and derives both from it, instead of two
+    independent full-tree walks back to back."""
+    entries = _library_entries()
+    sig = _library_sig_rows(entries)
+    try:
+        prog_mtime = round(os.path.getmtime(PROGRESS_FILE), 6)
+    except OSError:
+        prog_mtime = -1.0
+    return entries, repr((sig, prog_mtime))
+
+
+def _library_fingerprint():
+    """Cheap signature of everything the library views depend on: the
+    novels/ tree (per-folder chapter counts + dir and meta/cover mtimes)
+    and progress.json (tracked/read state).
+
+    Equal fingerprints ⇒ the on-screen library is up to date, so callers can
+    skip rebuilding widget trees. Reuses _scan_library()'s (recursive) walk
+    so novels whose slug contains a '/' — e.g. royalroad's "id/title" slugs,
+    which nest two directories deep — are covered too."""
+    _, fp = _library_entries_and_fingerprint()
+    return fp
 
 
 async def _track_novel(source, novel):
@@ -242,6 +408,12 @@ async def _save_cover(source, qualified_slug):
 _COVER_CACHE_DIR = os.path.join("novels", ".covers")
 _SHARED_HTTP_CLIENT = None
 
+# In-flight cover downloads, keyed by URL: concurrent callers for the same
+# URL share one request instead of each firing its own.  Created lazily by
+# _download_cover, so it stays safe across async_loop restarts.
+_COVER_INFLIGHT: dict[str, asyncio.Future] = {}
+_COVER_LOCK = asyncio.Lock()
+
 
 def _get_http_client():
     """Shared httpx.AsyncClient with a 30s timeout (created once)."""
@@ -273,23 +445,50 @@ def _cached_cover(url):
 
 
 async def _download_cover(url):
-    """httpx-download a remote cover into the shared cache dir (once)."""
+    """httpx-download a remote cover into the shared cache dir (once).
+
+    Concurrent callers for the same URL share a single in-flight download:
+    the first registers a future and fetches, the rest await that future
+    instead of issuing duplicate requests."""
     path = _cover_cache_path(url)
-    if not path or (path and os.path.exists(path)):
+    if not path or os.path.exists(path):
         return path
+    waiter = None
+    async with _COVER_LOCK:
+        if os.path.exists(path):
+            # A prior waiter finished while we waited on the lock.
+            return path
+        fut = _COVER_INFLIGHT.get(url)
+        if fut is not None:
+            waiter = fut
+        else:
+            fut = asyncio.get_running_loop().create_future()
+            _COVER_INFLIGHT[url] = fut
+    if waiter is not None:
+        try:
+            return await asyncio.shield(waiter)
+        except Exception:
+            return ""
+    # Only the registered owner downloads; the lock is released so waiters
+    # block on the future below instead of on the lock.
+    result = path
     try:
         os.makedirs(_COVER_CACHE_DIR, exist_ok=True)
         client = _get_http_client()
         resp = await client.get(url)
         if resp.status_code != 200:
-            return ""
-        tmp = path + ".tmp"
-        with open(tmp, "wb") as f:
-            f.write(resp.content)
-        os.replace(tmp, path)
-        return path
+            result = ""
+        else:
+            tmp = path + ".tmp"
+            with open(tmp, "wb") as f:
+                f.write(resp.content)
+            os.replace(tmp, path)
     except Exception:
-        return ""
+        result = ""
+    _COVER_INFLIGHT.pop(url, None)
+    if not fut.done():
+        fut.set_result(result)
+    return result
 
 
 def set_image_url(img, url):
@@ -339,13 +538,23 @@ async def _download_novel(source, qualified_slug, chapters, title,
     fetched, so callers can tell a network failure apart from 'already saved'.
     total: full novel chapter count for meta.json (so a partial download does
     not misreport the library size). progress_cb(done, saved) is invoked after
-    each chapter is processed."""
+    each chapter is processed.
+
+    Up to 4 chapters are fetched concurrently (bounded by a semaphore) instead
+    of one at a time, so network latency for a chapter round-trip doesn't add
+    up serially across the whole novel. done/saved are shared counters
+    updated as each chapter task completes (order of completion isn't
+    necessarily the chapter order, but the counts are the same either way).
+    """
     from translation import _translate_text
     import asyncio
     sem = asyncio.Semaphore(4)
     saved = 0
     failed = 0
-    for i, ch in enumerate(chapters):
+    done = 0
+
+    async def _process(ch):
+        nonlocal saved, failed, done
         safe_title = ch["title"].replace("/", "-").replace(" ", "_")
         if translate:
             path = os.path.join("novels", qualified_slug,
@@ -353,42 +562,39 @@ async def _download_novel(source, qualified_slug, chapters, title,
         else:
             path = os.path.join("novels", qualified_slug,
                                 safe_title + ".txt")
-        if os.path.exists(path):
-            if progress_cb is not None:
-                progress_cb(i + 1, saved)
-            continue
-        try:
+        if not os.path.exists(path):
             async with sem:
-                if translate:
-                    lines = await source.read_chapter(ch["url"])
-                    if not lines:
-                        failed += 1
-                        if progress_cb is not None:
-                            progress_cb(i + 1, saved)
-                        continue
-                    text = "\n\n".join(lines)
-                    translated = await asyncio.to_thread(
-                        _translate_text, text, lang)
-                    if not translated:
-                        failed += 1
-                        if progress_cb is not None:
-                            progress_cb(i + 1, saved)
-                        continue
-                    os.makedirs(os.path.join("novels", qualified_slug),
-                                exist_ok=True)
-                    with open(path, "w", encoding="utf-8") as f:
-                        f.write(translated)
-                    saved += 1
-                else:
-                    if await source.save_chapter(ch["url"], ch["title"],
-                                                 qualified_slug):
-                        saved += 1
+                try:
+                    if translate:
+                        lines = await source.read_chapter(ch["url"])
+                        if not lines:
+                            failed += 1
+                        else:
+                            text = "\n\n".join(lines)
+                            translated = await asyncio.to_thread(
+                                _translate_text, text, lang)
+                            if not translated:
+                                failed += 1
+                            else:
+                                os.makedirs(
+                                    os.path.join("novels", qualified_slug),
+                                    exist_ok=True)
+                                with open(path, "w", encoding="utf-8") as f:
+                                    f.write(translated)
+                                saved += 1
                     else:
-                        failed += 1
-        except Exception:
-            failed += 1
+                        if await source.save_chapter(ch["url"], ch["title"],
+                                                     qualified_slug):
+                            saved += 1
+                        else:
+                            failed += 1
+                except Exception:
+                    failed += 1
+        done += 1
         if progress_cb is not None:
-            progress_cb(i + 1, saved)
+            progress_cb(done, saved)
+
+    await asyncio.gather(*(_process(ch) for ch in chapters))
 
     cover_file = await _save_cover(source, qualified_slug)
 

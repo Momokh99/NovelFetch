@@ -2,7 +2,10 @@
 
 import colorsys
 
-from screens.theme import hsl_rgba, ACCENT, _DARK_SURFACE, _LIGHT_SURFACE, DIVIDER
+from screens.theme import (
+    hsl_rgba, ACCENT, _DARK_SURFACE, _LIGHT_SURFACE,
+    _DARK_HIGHLIGHT, _LIGHT_HIGHLIGHT, DIVIDER,
+)
 
 
 def test_hsl_rgba_pure_red():
@@ -77,3 +80,20 @@ def test_light_surface_is_very_bright():
 
 def test_divider_has_low_alpha():
     assert DIVIDER[3] == 0.35
+
+
+def test_dark_highlight_is_dim_blue():
+    assert len(_DARK_HIGHLIGHT) == 4
+    assert _DARK_HIGHLIGHT[2] > _DARK_HIGHLIGHT[0]
+    assert all(0 < v < 0.25 for v in _DARK_HIGHLIGHT[:3])
+
+
+def test_light_highlight_is_pale_blue():
+    assert len(_LIGHT_HIGHLIGHT) == 4
+    assert _LIGHT_HIGHLIGHT[2] > _LIGHT_HIGHLIGHT[0]
+    assert all(v > 0.85 for v in _LIGHT_HIGHLIGHT[:3])
+
+
+def test_highlights_differ_from_surfaces():
+    assert _DARK_HIGHLIGHT != _DARK_SURFACE
+    assert _LIGHT_HIGHLIGHT != _LIGHT_SURFACE

@@ -1,0 +1,103 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "novelfetch"
+version = "0.1.0"
+description = "A novel fetching and reading application with TUI and Android (KivyMD) frontends"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.9"
+authors = [
+    { name = "Mohamed" },
+]
+
+# Application dependencies (shared between TUI and Android)
+dependencies = [
+    "httpx>=0.28.0",
+    "beautifulsoup4>=4.14.0",
+    "deep-translator>=1.11.0",
+    "EbookLib>=0.20",
+]
+
+[project.optional-dependencies]
+# TUI-specific dependencies
+tui = [
+    "textual>=8.0.0",
+    "curl_cffi>=0.15.0",
+]
+# Android/KivyMD-specific dependencies
+android = [
+    "kivy>=2.3.0",
+    "kivymd>=2.0.0",
+    "arabic-reshaper",
+    "python-bidi",
+]
+# Development dependencies
+dev = [
+    "ruff>=0.8.0",
+    "mypy>=1.13",
+    "pytest>=8.0",
+    "pytest-cov>=6.0",
+    "pre-commit>=4.0",
+    "watchdog>=5.0",
+]
+
+[project.urls]
+Repository = "https://github.com/mohamed/webscrapp"
+
+# ──────────────────────────────────────────────
+# Tool configurations (all in one place)
+# ──────────────────────────────────────────────
+
+[tool.ruff]
+line-length = 88
+target-version = "py311"
+
+[tool.ruff.lint]
+select = [
+    "E",    # pycodestyle errors
+    "W",    # pycodestyle warnings
+    "F",    # Pyflakes
+    "I",    # isort (import sorting)
+    "UP",   # pyupgrade (modernize syntax)
+    "B",    # flake8-bugbear
+    "C4",   # flake8-comprehensions
+    "PT",   # flake8-pytest-style
+    "SIM",  # flake8-simplify
+]
+ignore = [
+    "E501",   # line too long (handled by formatter)
+    "F841",   # local variable assigned but never used (common in Kivy patterns)
+]
+
+[tool.ruff.lint.per-file-ignores]
+"android_app/**" = ["F811"]  # redefinition of unused names (Kivy KV includes)
+"tests/**" = ["F811", "PT009"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["screens", "sources", "progress", "translation", "epub"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+line-ending = "auto"
+
+[tool.mypy]
+python_version = "3.11"
+warn_return_any = true
+warn_unused_configs = true
+ignore_missing_imports = true  # Kivy/KivyMD stubs are incomplete
+exclude = ["tests/", ".buildozer/", "venv/"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_functions = ["test_*"]
+addopts = "-v --tb=short"
+
+[tool.pyright]
+venvPath = "."
+venv = "venv"
+pythonVersion = "3.11"

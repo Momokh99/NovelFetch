@@ -94,6 +94,52 @@ python main.py
 
 ---
 
+## Development
+
+### Quick Start
+
+```bash
+# One-time setup
+make setup
+make pre-commit-install
+
+# Daily development
+make run-kivy-dev        # Hot-reload KivyMD desktop
+make lint                # Check code quality
+make test                # Run test suite
+```
+
+### Available Commands
+
+| Command | Description |
+|---------|-------------|
+| `make setup` | Create venv and install all dependencies |
+| `make run-kivy-dev` | Run KivyMD app with hot-reload |
+| `make lint` | Run Ruff + mypy |
+| `make format` | Auto-format code |
+| `make test` | Run test suite with coverage |
+| `make android-debug` | Build debug APK |
+| `make android-deploy` | Deploy to connected device |
+
+### Development Tools
+
+- **Hot-Reload**: `android_app/main_dev.py` watches for file changes
+- **Linting**: Ruff (replaces flake8/black/isort)
+- **Type Checking**: Mypy + Pyright
+- **Testing**: Pytest with coverage
+- **Pre-commit**: Auto-format on commit
+
+### Skills & Agents
+
+Custom KivyMD development skills are available in `.opencode/skills/`:
+
+- `kivymd-development` - KivyMD 2.0 patterns and best practices
+- `python-testing-patterns` - Testing patterns for Python
+- `python-packaging` - Modern Python packaging
+- And more...
+
+---
+
 ## Disclaimer
 
 This tool scrapes publicly available content for personal use. Novels belong to their authors and translators. Support them if you can.

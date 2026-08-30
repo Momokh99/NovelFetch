@@ -22,55 +22,76 @@
                     bold: True
                     adaptive_height: True
 
-                OneLineAvatarIconListItem:
-                    text: "Dark theme"
-                    IconLeftWidget:
+                MDListItem:
+                    MDListItemLeadingIcon:
                         icon: "brightness-4"
+                    MDListItemHeadlineText:
+                        text: "Dark theme"
                     MDSwitch:
                         id: theme_switch
                         on_active: root._toggle_theme()
 
-                OneLineAvatarIconListItem:
+                MDListItem:
                     id: palette_row
-                    text: "Primary color"
                     on_release: root._open_palette()
-                    IconLeftWidget:
+                    MDListItemLeadingIcon:
                         icon: "palette"
+                    MDListItemHeadlineText:
+                        text: "Primary color"
 
-                OneLineAvatarIconListItem:
+                MDListItem:
                     id: read_indicator_row
-                    text: "Read indicator"
                     on_release: root._open_read_indicator()
-                    IconLeftWidget:
+                    MDListItemLeadingIcon:
                         icon: "progress-check"
+                    MDListItemHeadlineText:
+                        text: "Read indicator"
 
                 MDLabel:
                     text: "Grid"
                     bold: True
                     adaptive_height: True
 
-                OneLineAvatarIconListItem:
+                MDListItem:
                     id: grid_size_row
-                    text: "Card grid size"
                     on_release: root._open_grid_size()
-                    IconLeftWidget:
+                    MDListItemLeadingIcon:
                         icon: "view-comfy"
+                    MDListItemHeadlineText:
+                        text: "Card grid size"
 
-                OneLineAvatarIconListItem:
+                MDListItem:
                     id: home_layout_row
-                    text: "Home layout"
                     on_release: root._open_home_layout()
-                    IconLeftWidget:
+                    MDListItemLeadingIcon:
                         icon: "view-dashboard"
+                    MDListItemHeadlineText:
+                        text: "Home layout"
 
-                OneLineAvatarIconListItem:
-                    text: "Show continue reading"
-                    IconLeftWidget:
+                MDListItem:
+                    MDListItemLeadingIcon:
                         icon: "bookmark-multiple"
+                    MDListItemHeadlineText:
+                        text: "Show continue reading"
                     MDSwitch:
                         id: continue_reading_switch
                         pos_hint: {"center_y": .5, "right": 1}
                         on_active: root._toggle_continue_reading()
+
+                MDLabel:
+                    text: "Updates"
+                    bold: True
+                    adaptive_height: True
+
+                MDListItem:
+                    MDListItemLeadingIcon:
+                        icon: "update"
+                    MDListItemHeadlineText:
+                        text: "Update & download"
+                    MDSwitch:
+                        id: update_and_download_switch
+                        pos_hint: {"center_y": .5, "right": 1}
+                        on_active: root._toggle_update_and_download()
 
                 MDLabel:
                     text: "Library"
@@ -81,14 +102,16 @@
                     id: library_info
                     text: ""
                     theme_text_color: "Secondary"
-                    font_style: "Caption"
+                    font_style: "Label"
+                    role: "medium"
                     adaptive_height: True
 
-                OneLineAvatarIconListItem:
-                    text: "Clear library"
+                MDListItem:
                     on_release: root._confirm_clear()
-                    IconLeftWidget:
+                    MDListItemLeadingIcon:
                         icon: "delete"
+                    MDListItemHeadlineText:
+                        text: "Clear library"
 
                 MDLabel:
                     text: "About"
@@ -98,5 +121,6 @@
                 MDLabel:
                     text: root.about_text
                     theme_text_color: "Secondary"
-                    font_style: "Caption"
+                    font_style: "Label"
+                    role: "medium"
                     adaptive_height: True

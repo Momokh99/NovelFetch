@@ -29,7 +29,8 @@
                         id: source_label
                         text: ""
                         theme_text_color: "Secondary"
-                        font_style: "Caption"
+                        font_style: "Label"
+                        role: "large"
                         size_hint_y: None
                         height: dp(48)
                         valign: "top"
@@ -54,19 +55,21 @@
                     MDTextField:
                         id: search_field
                         hint_text: "Search novels…"
-                        mode: "round"
-                        icon_left: "magnify"
+                        mode: "outlined"
                         size_hint: (1, None)
                         height: "56dp"
                         on_text_validate: root._on_enter()
                         on_text: root._on_text_changed()
+
+                        MDTextFieldLeadingIcon:
+                            icon: "magnify"
 
                     MDIconButton:
                         id: clear_btn
                         icon: "close"
                         on_release: root._clear()
 
-                MDProgressBar:
+                MDLinearProgressIndicator:
                     id: search_progress
                     indeterminate: True
                     opacity: 0
@@ -86,6 +89,33 @@
                     adaptive_height: True
                     opacity: 0
                     disabled: True
+                    spacing: theme.SECTION_GAP
+
+                    MDLabel:
+                        id: result_header
+                        text: ""
+                        bold: True
+                        theme_text_color: "Secondary"
+                        font_style: "Title"
+                        role: "medium"
+                        adaptive_height: True
+
+                    MDLabel:
+                        id: result_state_label
+                        text: ""
+                        theme_text_color: "Secondary"
+                        font_style: "Title"
+                        role: "medium"
+                        adaptive_height: True
 
                     MDList:
                         id: results_list
+                        spacing: dp(2)
+
+                    MDLabel:
+                        id: page_footer
+                        text: ""
+                        theme_text_color: "Secondary"
+                        font_style: "Label"
+                        role: "large"
+                        adaptive_height: True
