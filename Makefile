@@ -62,10 +62,10 @@ test-android:  ## Run only Android/UI-related tests
 ##@ ────────────────────── Desktop Development
 
 run-tui:  ## Run the Textual TUI app using myenv
-	./myenv/bin/python main.py
+	./myenv/bin/python main.py tui
 
 run-kivy:  ## Run the KivyMD GUI app using android_env
-	./android_env/bin/python gui/main.py
+	./android_env/bin/python main.py gui
 
 ##@ ────────────────────── Android Build
 

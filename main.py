@@ -20,10 +20,28 @@ def _run_tui():
 
 
 def main():
-    # python-for-android sets ANDROID_ARGUMENT when running the packaged app;
-    # the desktop TUI env may not even have kivy installed, so don't import it
-    # at module scope.
-    if os.environ.get("ANDROID_ARGUMENT"):
+    import argparse
+
+    parser = argparse.ArgumentParser(
+        description="NovelFetch launcher: choose the TUI or GUI frontend."
+    )
+    parser.add_argument(
+        "app",
+        nargs="?",
+        default=None,
+        choices=("tui", "gui"),
+        help="frontend to launch; defaults to 'gui' on Android, 'tui' on desktop",
+    )
+    args = parser.parse_args()
+
+    app = args.app
+    if app is None:
+        # python-for-android sets ANDROID_ARGUMENT when running the packaged
+        # app; the desktop TUI env may not even have kivy installed, so don't
+        # import it at module scope.
+        app = "gui" if os.environ.get("ANDROID_ARGUMENT") else "tui"
+
+    if app == "gui":
         _run_gui()
     else:
         _run_tui()
