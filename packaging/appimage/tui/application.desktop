@@ -1,6 +1,6 @@
 [Desktop Entry]
 Type=Application
-Name=NovelFetch TUI
+Name=NovelFetchTUI
 Comment=Novel fetching and reading application (TUI)
 Exec=novelfetch-tui
 Icon=application

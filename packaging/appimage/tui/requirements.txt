@@ -1,4 +1,0 @@
-# The built wheel is copied into this directory (as novelfetch.whl) by the
-# release workflow before python-appimage runs.  Installing the [tui] extra
-# pulls the Textual + curl_cffi stack; the core deps ride along via the wheel.
-novelfetch.whl[tui]

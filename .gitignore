@@ -21,7 +21,8 @@ novels/
 gui/novels/
 
 # Local wheel staged into AppImage recipes during CI builds
-packaging/appimage/*/novelfetch.whl
+packaging/appimage/*/novelfetch-*.whl
+packaging/appimage/*/requirements.txt
 
 # Buildozer / Kivy build artifacts
 .buildozer/
