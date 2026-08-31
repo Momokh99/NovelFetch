@@ -45,11 +45,12 @@ def test_clear_button_ignores_whitespace():
 
 def test_in_library_registered(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
-    import json, os
+    import json
+    import os
     d = tmp_path / "novels" / "rr:my-novel"
     d.mkdir(parents=True)
     (d / "meta.json").write_text(json.dumps({"title": "My Novel"}))
-    from screens import utils
+    from gui.screens import utils
     qualified = "rr:my-novel"
     registered = bool(qualified and utils._read_meta(qualified))
     assert registered is True
@@ -57,7 +58,7 @@ def test_in_library_registered(tmp_path, monkeypatch):
 
 def test_in_library_not_registered(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
-    from screens import utils
+    from gui.screens import utils
     qualified = "rr:not-here"
     registered = bool(qualified and utils._read_meta(qualified))
     assert registered is False

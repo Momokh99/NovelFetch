@@ -3,7 +3,7 @@
 import time
 from datetime import datetime
 
-from screens.history import _time_ago
+from gui.screens.history import _time_ago
 
 
 def test_time_ago_none_returns_empty():

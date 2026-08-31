@@ -7,7 +7,7 @@ import os
 
 import pytest
 
-from screens import utils
+from gui.screens import utils
 
 
 class _FakeSource:

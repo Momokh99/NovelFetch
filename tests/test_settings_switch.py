@@ -11,7 +11,7 @@ from kivy.lang import Builder
 from kivymd.app import MDApp
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-APP = os.path.join(ROOT, "android_app")
+APP = os.path.join(ROOT, "gui")
 
 
 class _SettingsApp(MDApp):
@@ -20,7 +20,7 @@ class _SettingsApp(MDApp):
         Builder.load_file(os.path.join(APP, "kv/topbar.kv"))
         self.theme_cls.theme_style = "Light"
         self.theme_cls.primary_palette = "Teal"
-        from screens.settings_tab import SettingsTab
+        from gui.screens.settings_tab import SettingsTab
         return SettingsTab()
 
 

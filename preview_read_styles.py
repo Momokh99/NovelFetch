@@ -1,13 +1,12 @@
 import math
+
 from kivy.metrics import dp, sp
 from kivy.properties import NumericProperty, StringProperty
 from kivy.uix.scrollview import ScrollView
-
 from kivymd.app import MDApp
 from kivymd.uix.boxlayout import MDBoxLayout
 from kivymd.uix.card import MDCard
 from kivymd.uix.label import MDIcon, MDLabel
-
 
 STYLES = [
     ("Linear Bar", "horizontal fill bar", "linear"),
@@ -57,6 +56,8 @@ class Indicator(MDBoxLayout):
         if self.style == "text":
             return
         app = MDApp.get_running_app()
+        if app is None:
+            return
         prim = list(app.theme_cls.primary_color)
         w, h = self.width, self.height
         if w <= 0 or h <= 0:

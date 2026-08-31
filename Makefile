@@ -3,7 +3,7 @@
 # ==============================================================================
 
 .DEFAULT_GOAL := help
-.PHONY: help
+.PHONY: help setup setup-tui setup-android lint lint-fix format format-check test test-quick test-android run-tui run-kivy run-kivy-dev
 
 help:  ## Display this help
 	@awk 'BEGIN {FS = ":.*##"; printf "\nUsage:\n  make \033[36m<target>\033[0m\n"} \
@@ -12,52 +12,60 @@ help:  ## Display this help
 
 ##@ ────────────────────── Environment Setup
 
-setup:  ## Create venv and install all dev dependencies
-	python3 -m venv venv
-	./venv/bin/pip install --upgrade pip
-	./venv/bin/pip install -r requirements.txt
-	./venv/bin/pip install -r android_app/requirements.txt
-	./venv/bin/pip install ruff mypy pytest pytest-cov watchdog pre-commit
-	@echo "✅ Done. Activate with: source venv/bin/activate"
+setup: setup-tui setup-android  ## Create both development environments
+	@echo "✅ Development environments ready: myenv (TUI/tools), android_env (Kivy/tests)"
+
+setup-tui:  ## Create myenv for the TUI and code-quality tools
+	python3 -m venv myenv
+	./myenv/bin/pip install --upgrade pip
+	./myenv/bin/pip install -r requirements.txt
+	./myenv/bin/pip install ruff mypy pyright pre-commit
+	@echo "✅ TUI environment ready. Activate with: source myenv/bin/activate"
+
+setup-android:  ## Create android_env with system Kivy and GUI/UI test tools
+	python3 -m venv --system-site-packages android_env
+	./android_env/bin/pip install --upgrade pip
+	./android_env/bin/pip install -r gui/requirements.txt
+	./android_env/bin/pip install pytest pytest-cov watchdog
+	@echo "✅ GUI environment ready. Activate with: source android_env/bin/activate"
+	@echo "   Arch Linux requires the system package: sudo pacman -S python-kivy"
 
 ##@ ────────────────────── Linting & Formatting
 
-lint:  ## Run all linters (ruff check + mypy)
-	./venv/bin/ruff check .
-	./venv/bin/mypy android_app/ sources/ --ignore-missing-imports
+lint:  ## Run Ruff, mypy, and Pyright using myenv
+	./myenv/bin/ruff check .
+	./myenv/bin/mypy gui/ sources/ --ignore-missing-imports
+	./myenv/bin/pyright
 
 lint-fix:  ## Auto-fix lint issues
-	./venv/bin/ruff check --fix .
+	./myenv/bin/ruff check --fix .
 
-format:  ## Format code (ruff format + ruff import sorting)
-	./venv/bin/ruff format .
-	./venv/bin/ruff check --fix --select I .
+format:  ## Format code (ruff format + import sorting)
+	./myenv/bin/ruff format .
+	./myenv/bin/ruff check --fix --select I .
 
 format-check:  ## Check formatting without modifying
-	./venv/bin/ruff format --check .
-	./venv/bin/ruff check --select I . --diff
+	./myenv/bin/ruff format --check .
+	./myenv/bin/ruff check --select I . --diff
 
 ##@ ────────────────────── Testing
 
-test:  ## Run all tests with coverage
-	./venv/bin/pytest tests/ -v --tb=short --cov=. --cov-report=term-missing
+test:  ## Run all tests with coverage in android_env
+	./android_env/bin/pytest tests/ -v --tb=short --cov=. --cov-report=term-missing
 
 test-quick:  ## Run tests without coverage (fast)
-	./venv/bin/pytest tests/ -x -q
+	./android_env/bin/pytest tests/ -x -q
 
-test-android:  ## Run only Android-related tests
-	./venv/bin/pytest tests/ -v -k "android or ui" --tb=short
+test-android:  ## Run only Android/UI-related tests
+	./android_env/bin/pytest tests/ -v -k "android or ui" --tb=short
 
 ##@ ────────────────────── Desktop Development
 
-run-tui:  ## Run the Textual TUI app
-	./venv/bin/python main.py
+run-tui:  ## Run the Textual TUI app using myenv
+	./myenv/bin/python main.py
 
-run-kivy:  ## Run the KivyMD app on desktop (no hot-reload)
-	cd android_app && ../venv/bin/python main.py
-
-run-kivy-dev:  ## Run the KivyMD app with hot-reload
-	DEBUG=1 ./venv/bin/python android_app/main_dev.py
+run-kivy:  ## Run the KivyMD GUI app using android_env
+	./android_env/bin/python gui/main.py
 
 ##@ ────────────────────── Android Build
 
@@ -79,10 +87,10 @@ android-clean:  ## Clean buildozer build artifacts
 ##@ ────────────────────── Code Quality
 
 pre-commit-install:  ## Install pre-commit hooks
-	./venv/bin/pre-commit install
+	./myenv/bin/pre-commit install
 
 pre-commit-run:  ## Run pre-commit on all files
-	./venv/bin/pre-commit run --all-files
+	./myenv/bin/pre-commit run --all-files
 
 ##@ ────────────────────── Cleanup
 

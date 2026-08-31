@@ -1,12 +1,11 @@
-"""Tests for android_app/screens/utils.py pure helpers (no network/UI)."""
+"""Tests for gui/screens/utils.py pure helpers (no network/UI)."""
 
 import json
 import os
 
 import pytest
 
-from screens import utils
-
+from gui.screens import utils
 
 # ---- translation-file detection ----
 

@@ -2,9 +2,14 @@
 
 import colorsys
 
-from screens.theme import (
-    hsl_rgba, ACCENT, _DARK_SURFACE, _LIGHT_SURFACE,
-    _DARK_HIGHLIGHT, _LIGHT_HIGHLIGHT, DIVIDER,
+from gui.screens.theme import (
+    _DARK_HIGHLIGHT,
+    _DARK_SURFACE,
+    _LIGHT_HIGHLIGHT,
+    _LIGHT_SURFACE,
+    ACCENT,
+    DIVIDER,
+    hsl_rgba,
 )
 
 

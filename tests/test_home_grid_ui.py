@@ -10,10 +10,10 @@ from kivy.lang import Builder
 from kivymd.app import MDApp
 from kivymd.uix.label import MDLabel
 
-from screens.home_tab import _badge_text, _unread_count
+from gui.screens.home_tab import _badge_text, _unread_count
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-APP = os.path.join(ROOT, "android_app")
+APP = os.path.join(ROOT, "gui")
 
 
 def _find(widget, cls):
@@ -37,7 +37,7 @@ def _labels(widget):
 
 class _HomeApp(MDApp):
     def build(self):
-        from screens.home_tab import HomeTab
+        from gui.screens.home_tab import HomeTab
         return HomeTab()
 
 
@@ -65,7 +65,7 @@ def _make_novel(slug, chapters, last=None, title=None, cover="cover.png"):
     with open(os.path.join("novels", slug, "meta.json"), "w") as f:
         json.dump(meta, f)
     if last is not None:
-        from progress import progress
+        from core.progress import progress
         progress.mark_seen(slug, last)
     return {"slug": slug, "title": title or slug, "count": chapters}
 
@@ -105,7 +105,7 @@ def test_badge_text_caps_at_999():
 # ---------- cover rendering path ----------
 
 def test_grid_card_draws_cover(tab):
-    from screens.home_tab import _FitCover
+    from gui.screens.home_tab import _FitCover
     novel = _make_novel("a:cover_g", chapters=4)
     card = tab._grid_card(novel, cols=2)
     cover = _find(card, _FitCover)
@@ -114,7 +114,7 @@ def test_grid_card_draws_cover(tab):
 
 
 def test_continue_card_draws_cover(tab):
-    from screens.home_tab import _FitCover
+    from gui.screens.home_tab import _FitCover
     novel = _make_novel("a:cover_c", chapters=4, last=1)
     card = tab._continue_card(novel)
     cover = _find(card, _FitCover)
@@ -124,7 +124,8 @@ def test_continue_card_draws_cover(tab):
 
 def test_grid_cover_has_direct_cover_child(tab):
     from kivy.uix.floatlayout import FloatLayout
-    from screens.home_tab import _FitCover
+
+    from gui.screens.home_tab import _FitCover
     novel = _make_novel("a:direct_g", chapters=10, last=2)
     cbox = tab._grid_cover(novel, cols=2)
     assert _find(cbox, FloatLayout) is None  # no overlay between cbox and cover
@@ -135,7 +136,8 @@ def test_grid_cover_has_direct_cover_child(tab):
 
 def test_continue_card_cover_has_direct_child(tab):
     from kivy.uix.floatlayout import FloatLayout
-    from screens.home_tab import _FitCover
+
+    from gui.screens.home_tab import _FitCover
     novel = _make_novel("a:direct_c", chapters=4, last=0)
     card = tab._continue_card(novel)
     assert _find(card, FloatLayout) is None
@@ -155,7 +157,7 @@ def test_grid_card_is_bare(tab):
 
 def test_grid_card_shows_only_title_below_cover(tab):
     novel = _make_novel("a:two", chapters=4)
-    from screens.novel_list import _TapCard as _Card
+    from gui.screens.novel_list import _TapCard as _Card
     card = tab._grid_card(novel, cols=2)
     assert isinstance(card, _Card)
     texts = _labels(card)
@@ -164,7 +166,7 @@ def test_grid_card_shows_only_title_below_cover(tab):
 
 
 def test_grid_card_badge_shows_unread(tab):
-    from screens.home_tab import UnreadBadge
+    from gui.screens.home_tab import UnreadBadge
     novel = _make_novel("a:three", chapters=10, last=3)
     card = tab._grid_card(novel, cols=2)
     badge = _find(card, UnreadBadge)
@@ -174,14 +176,14 @@ def test_grid_card_badge_shows_unread(tab):
 
 
 def test_grid_card_no_badge_when_fully_read(tab):
-    from screens.home_tab import UnreadBadge
+    from gui.screens.home_tab import UnreadBadge
     novel = _make_novel("a:four", chapters=5, last=4)
     card = tab._grid_card(novel, cols=2)
     assert _find(card, UnreadBadge) is None
 
 
 def test_continue_card_gets_unread_badge(tab):
-    from screens.home_tab import UnreadBadge
+    from gui.screens.home_tab import UnreadBadge
     novel = _make_novel("a:five", chapters=8)
     card = tab._continue_card(novel)
     badge = _find(card, UnreadBadge)
@@ -205,7 +207,7 @@ def test_topbar_title_resets_when_empty(tab):
 def test_layout_a_uses_bare_grid_card(tab):
     _make_novel("a:eight", chapters=4)
     _make_novel("b:nine", chapters=3)
-    from screens.novel_list import _TapCard as _Card
+    from gui.screens.novel_list import _TapCard as _Card
     tab._layout_A([
         {"slug": "a:eight", "title": "eight", "count": 4},
         {"slug": "b:nine", "title": "nine", "count": 3},

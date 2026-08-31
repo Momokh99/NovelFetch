@@ -3,15 +3,14 @@ greedy RTL line wrapping, and the rewrite toggle state machine."""
 
 import re
 
-from screens.reader import (
-    _strip_control_chars,
+from gui.screens.reader import (
     _CTRL_CHARS_RE,
     _greedy_wrap,
+    _strip_control_chars,
     _wrap_rtl_lines,
     lines_per_chunk,
     pack_lines_into_chunks,
 )
-
 
 # ---- font clamping ----
 
@@ -115,7 +114,7 @@ def test_ctrl_chars_regex_covers_all_targets():
 # ---- shape_arabic_text integration ----
 
 def test_shape_arabic_text_strips_invisible_marks():
-    from screens.reader import _shape_arabic_text
+    from gui.screens.reader import _shape_arabic_text
     text = "مرحبا\u200f بالعالم"
     result = _shape_arabic_text(text)
     assert "\u200f" not in result
@@ -131,7 +130,7 @@ def test_shape_arabic_text_fallback():
         has_shaping = False
 
     if not has_shaping:
-        from screens.reader import _shape_arabic_text
+        from gui.screens.reader import _shape_arabic_text
         assert _shape_arabic_text("hello") == "hello"
         assert _shape_arabic_text("") == ""
 

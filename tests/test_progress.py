@@ -4,8 +4,8 @@ import json
 
 import pytest
 
-import progress as progress_mod
-from progress import ProgressTracker
+from core import progress as progress_mod
+from core.progress import ProgressTracker
 
 
 @pytest.fixture()

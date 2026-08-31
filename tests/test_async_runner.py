@@ -1,10 +1,10 @@
-"""Tests for android_app/async_runner.py — real threads, no Kivy Clock."""
+"""Tests for gui/async_runner.py — real threads, no Kivy Clock."""
 
 import asyncio
 
 import pytest
 
-from async_runner import AsyncLoop
+from gui.async_runner import AsyncLoop
 
 
 @pytest.fixture()
@@ -66,5 +66,5 @@ def test_stop_is_idempotent():
 
 
 def test_singleton_exists():
-    from async_runner import async_loop
+    from gui.async_runner import async_loop
     assert isinstance(async_loop, AsyncLoop)

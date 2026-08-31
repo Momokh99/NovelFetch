@@ -1,0 +1,208 @@
+#:import theme gui.screens.theme
+#:import _TouchPassThrough gui.screens.home_tab
+
+<HomeTab>:
+    # Screen is a RelativeLayout: children can layer with pos_hint. The shell
+    # fills the tab; the second child is a floating overlay (scrim + bottom
+    # sheet) drawn on top for selection footer + batch downloads.
+
+    # ---------- main library shell ----------
+    MDBoxLayout:
+        orientation: "vertical"
+
+        TopBar:
+            id: topbar
+            title: "NovelFetch"
+
+        ScrollView:
+            always_overscroll: False
+
+            MDBoxLayout:
+                id: content_box
+                orientation: "vertical"
+                adaptive_height: True
+                padding: (theme.PAGE_PAD, 0, theme.PAGE_PAD, theme.PAGE_PAD)
+                spacing: theme.SECTION_GAP
+
+        # ---------- selection footer (hidden unless select mode) ----------
+        MDBoxLayout:
+            id: sel_footer
+            orientation: "horizontal"
+            size_hint_y: None
+            height: 0
+            opacity: 0
+            disabled: True
+            padding: (theme.PAGE_PAD, "8dp", theme.PAGE_PAD, "8dp")
+            spacing: "8dp"
+
+            MDIconButton:
+                id: sel_close
+                icon: "close"
+                theme_icon_color: "Secondary"
+
+            MDLabel:
+                id: sel_count
+                text: "0 selected"
+                bold: True
+                valign: "middle"
+                halign: "left"
+                theme_text_color: "Primary"
+
+            Widget:
+                size_hint_x: 1.0
+
+            MDButton:
+                id: sel_download
+                style: "filled"
+                on_release: root._batch_download()
+
+                MDButtonText:
+                    text: "Download"
+
+            MDIconButton:
+                id: sel_more
+                icon: "dots-vertical"
+                theme_icon_color: "Secondary"
+
+    # ---------- floating batch-download overlay ----------
+    _TouchPassThrough:
+        id: batch_overlay
+        opacity: 0
+
+        # Scrim: dims the library while the sheet is open.
+        MDBoxLayout:
+            md_bg_color: [0, 0, 0, 0.45]
+
+        # Bottom sheet (custom; KivyMD 2.0 has no modal sheet widget).
+        MDBoxLayout:
+            id: batch_panel
+            orientation: "vertical"
+            size_hint_x: 1
+            size_hint_y: None
+            height: "480dp"
+            pos_hint: {"x": 0, "y": 0}
+            radius: [18, 18, 0, 0]
+            md_bg_color: theme.surface_color()
+            padding: ("8dp", "8dp", "8dp", "12dp")
+            spacing: "6dp"
+
+            MDBoxLayout:
+                orientation: "horizontal"
+                size_hint_y: None
+                height: "48dp"
+
+                MDIconButton:
+                    id: batch_close
+                    icon: "close"
+                    theme_icon_color: "Secondary"
+
+                MDLabel:
+                    id: batch_step
+                    text: "Download"
+                    bold: True
+                    valign: "middle"
+                    halign: "left"
+                    font_style: "Title"
+                    role: "small"
+
+            MDLabel:
+                id: batch_title
+                text: ""
+                theme_text_color: "Secondary"
+                size_hint_y: None
+                adaptive_height: True
+                shorten: True
+                shorten_from: "right"
+                max_lines: 1
+
+            MDLabel:
+                id: batch_summary
+                text: ""
+                theme_text_color: "Secondary"
+                font_style: "Label"
+                role: "medium"
+                size_hint_y: None
+                adaptive_height: True
+
+            # Language selector row (picker state only).
+            MDBoxLayout:
+                id: batch_lang_row
+                orientation: "horizontal"
+                size_hint_y: None
+                height: "40dp"
+                opacity: 0
+                padding: ("8dp", 0, "8dp", 0)
+
+                MDButton:
+                    style: "text"
+                    on_release: root._pick_batch_language()
+
+                    MDButtonText:
+                        text: "Translated to"
+
+                MDLabel:
+                    id: batch_lang_label
+                    text: "Arabic"
+                    bold: True
+                    font_style: "Body"
+                    role: "large"
+                    halign: "left"
+                    valign: "center"
+
+            MDLabel:
+                id: batch_preparing
+                text: ""
+                theme_text_color: "Secondary"
+                font_style: "Label"
+                role: "large"
+                size_hint_y: None
+                adaptive_height: True
+                opacity: 0
+
+            # Chapter-subset options (picker state).
+            ScrollView:
+                id: batch_options_scroll
+                always_overscroll: False
+                bar_width: 0
+                opacity: 0
+                disabled: True
+
+                MDBoxLayout:
+                    id: batch_options
+                    orientation: "vertical"
+                    adaptive_height: True
+
+            # Inline download progress (progress state).
+            MDBoxLayout:
+                id: batch_progress_box
+                orientation: "vertical"
+                size_hint_y: None
+                height: "110dp"
+                spacing: "8dp"
+                padding: ("8dp", "8dp", "8dp", 0)
+                opacity: 0
+                disabled: True
+
+                MDLinearProgressIndicator:
+                    id: batch_bar
+                    value: 0
+                    max: 1
+
+                MDLabel:
+                    id: batch_status
+                    text: ""
+                    theme_text_color: "Secondary"
+                    font_style: "Label"
+                    role: "large"
+                    size_hint_y: None
+                    adaptive_height: True
+
+                MDButton:
+                    id: batch_cancel
+                    style: "filled"
+                    size_hint: (1, None)
+                    height: "40dp"
+                    on_release: root._skip_current_download()
+
+                    MDButtonText:
+                        text: "Skip novel"

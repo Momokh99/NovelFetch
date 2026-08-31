@@ -1,16 +1,14 @@
-"""Test bootstrap: expose repo-root shared modules and the Kivy app package.
+"""Test bootstrap: expose repo-root packages (core, sources, tui, gui).
 
-Import order matters: android_app must precede the repo root so the bare name
-``screens`` resolves to android_app/screens (Kivy) and NOT the legacy Textual
-TUI screens/ at the root.
+Tests import both the shared packages (core, sources) and the Kivy GUI
+(gui.screens.*). Adding the repo root to sys.path makes every top-level
+package importable; there is no longer any bare `screens` name collision.
 """
 
 import os
 import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-APP = os.path.join(ROOT, "android_app")
 
-for _p in (ROOT, APP):
-    if _p not in sys.path:
-        sys.path.insert(0, _p)
+if ROOT not in sys.path:
+    sys.path.insert(0, ROOT)

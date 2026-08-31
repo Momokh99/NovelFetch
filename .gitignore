@@ -3,11 +3,6 @@ myenv/
 .myvenv/
 android_env/
 venv/
-that/
-see/
-system/
-can/
-#/
 
 # Python cache
 __pycache__/
@@ -23,11 +18,11 @@ dist/
 
 # Downloaded content
 novels/
-android_app/novels/
+gui/novels/
 
 # Buildozer / Kivy build artifacts
 .buildozer/
-android_app/.buildozer/
+gui/.buildozer/
 bin/
 
 # Local user settings

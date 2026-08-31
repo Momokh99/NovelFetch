@@ -26,7 +26,7 @@ Create comprehensive tests for the specified KivyMD component. Follow these patt
 
 import pytest
 from unittest.mock import MagicMock, patch
-from screens.{component_name} import {ClassName}
+from gui.screens.{component_name} import {ClassName}
 
 
 class Test{ClassName}PureLogic:

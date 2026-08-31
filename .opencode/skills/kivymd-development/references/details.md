@@ -17,7 +17,7 @@ Detailed examples and patterns from the NovelFetch codebase.
 ### MainScreen with ScreenManager
 
 ```python
-# android_app/screens/main_screen.py
+# gui/screens/main_screen.py
 from kivymd.uix.screen import MDScreen
 from kivymd.uix.screenmanager import MDScreenManager
 
@@ -50,7 +50,7 @@ class MainScreen(MDScreen):
 ### KV for Navigation Bar
 
 ```kv
-# android_app/kv/main_screen.kv
+# gui/kv/main_screen.kv
 <MainScreen>:
     MDBoxLayout:
         orientation: "vertical"
@@ -89,7 +89,7 @@ class MainScreen(MDScreen):
 ### AsyncRunner Bridge
 
 ```python
-# android_app/async_runner.py
+# gui/async_runner.py
 import asyncio
 from kivy.clock import Clock
 
@@ -149,7 +149,7 @@ async_loop = AsyncLoop()
 ### Using Async in Screens
 
 ```python
-# android_app/screens/reader.py
+# gui/screens/reader.py
 class ReaderScreen(MDScreen):
     def _load_chapter(self, url):
         """Load chapter asynchronously."""
@@ -187,8 +187,8 @@ class ReaderScreen(MDScreen):
 ### Complex Layouts
 
 ```kv
-# android_app/kv/reader.kv
-#:import theme screens.theme
+# gui/kv/reader.kv
+#:import theme gui.screens.theme
 
 <ReaderScreen>:
     MDBoxLayout:
@@ -297,7 +297,7 @@ class ReaderScreen(MDScreen):
 ### Custom Card Widget
 
 ```python
-# android_app/screens/home_tab.py
+# gui/screens/home_tab.py
 from kivymd.uix.card import MDCard
 from kivymd.uix.label import MDLabel
 
@@ -335,7 +335,7 @@ class NovelCard(MDCard):
 ### Custom List Item
 
 ```python
-# android_app/screens/chapter_list.py
+# gui/screens/chapter_list.py
 from kivymd.uix.list import MDListItem, MDListItemHeadlineText, MDListItemSupportingText
 
 class ChapterListItem(MDListItem):
@@ -373,7 +373,7 @@ class ChapterListItem(MDListItem):
 ```python
 # tests/test_reader_logic.py
 import pytest
-from screens.reader import (
+from gui.screens.reader import (
     _strip_control_chars,
     _CTRL_CHARS_RE,
     _greedy_wrap,
@@ -424,7 +424,7 @@ def test_pack_lines_into_chunks():
 ```python
 # tests/test_search_tab_logic.py
 import pytest
-from screens.search_tab import SearchTab
+from gui.screens.search_tab import SearchTab
 
 def test_search_initial_state():
     tab = SearchTab()

@@ -5,7 +5,6 @@ from bs4 import BeautifulSoup
 
 from sources import REGISTRY
 
-
 KEYS = {"royalroad", "scriblehub", "wuxiaspot"}
 
 

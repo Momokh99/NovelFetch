@@ -1,9 +1,9 @@
 # =============================================================================
 # NovelFetch - Buildozer spec for the Android (KivyMD) app.
 #
-# The repo shares code: sources/ + progress.py + translation.py + epub.py live
-# at the repo root, while the Kivy UI is android_app/. Buildozer launches the
-# repo-root main.py, which dispatches to android_app.main on Android.
+# The repo shares code: sources/ + core/ live at the repo root, while the
+# KivyMD UI is gui/. Buildozer launches the repo-root main.py, which
+# dispatches to gui.main on Android.
 #
 # To build:  (must be run on Linux x86_64 with Docker, or with an Android SDK)
 #     pip install buildozer
@@ -35,7 +35,7 @@ source.include_exts = py,png,jpg,kv,atlas,gif,ttf
 source.exclude_exts = spec
 
 # (list) List of directory to exclude (let empty to not exclude anything)
-source.exclude_dirs = tests, bin, android_env, .git, .buildozer, .venv, screens, novels, venv, that, see, system, myenv, can
+source.exclude_dirs = tests, bin, android_env, .git, .buildozer, .venv, tui, novels, venv, that, see, system, myenv, can
 
 # (list) List of exclusions using pattern matching
 #source.exclude_patterns = license,images/*/*.jpg
@@ -60,7 +60,7 @@ requirements = python3,kivy==2.3.1,kivymd==2.0.0,httpx,beautifulsoup4,deep-trans
 #presplash.filename = %(source.dir)s/data/presplash.png
 
 # (str) Icon of the application
-icon.filename = %(source.dir)s/android_app/data/icon.png
+icon.filename = %(source.dir)s/gui/data/icon.png
 
 # (str) Supported orientation
 orientation = portrait

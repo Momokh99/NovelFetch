@@ -1,9 +1,12 @@
-from sources.base import Source
-from typing import Optional
-from bs4 import BeautifulSoup
-import urllib.parse
-import os
 import asyncio
+import os
+import urllib.parse
+from typing import Optional
+
+from bs4 import BeautifulSoup
+
+from sources.base import Source
+
 
 class ScribbleHubSource(Source):
     _headers = {

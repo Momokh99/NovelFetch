@@ -1,0 +1,126 @@
+#:import theme gui.screens.theme
+
+<SettingsTab>:
+    MDBoxLayout:
+        orientation: "vertical"
+
+        TopBar:
+            id: topbar
+            title: "Settings"
+
+        ScrollView:
+            always_overscroll: False
+
+            MDBoxLayout:
+                orientation: "vertical"
+                adaptive_height: True
+                padding: (theme.PAGE_PAD, 0, theme.PAGE_PAD, theme.PAGE_PAD)
+                spacing: theme.SECTION_GAP
+
+                MDLabel:
+                    text: "Appearance"
+                    bold: True
+                    adaptive_height: True
+
+                MDListItem:
+                    MDListItemLeadingIcon:
+                        icon: "brightness-4"
+                    MDListItemHeadlineText:
+                        text: "Dark theme"
+                    MDSwitch:
+                        id: theme_switch
+                        on_active: root._toggle_theme()
+
+                MDListItem:
+                    id: palette_row
+                    on_release: root._open_palette()
+                    MDListItemLeadingIcon:
+                        icon: "palette"
+                    MDListItemHeadlineText:
+                        text: "Primary color"
+
+                MDListItem:
+                    id: read_indicator_row
+                    on_release: root._open_read_indicator()
+                    MDListItemLeadingIcon:
+                        icon: "progress-check"
+                    MDListItemHeadlineText:
+                        text: "Read indicator"
+
+                MDLabel:
+                    text: "Grid"
+                    bold: True
+                    adaptive_height: True
+
+                MDListItem:
+                    id: grid_size_row
+                    on_release: root._open_grid_size()
+                    MDListItemLeadingIcon:
+                        icon: "view-comfy"
+                    MDListItemHeadlineText:
+                        text: "Card grid size"
+
+                MDListItem:
+                    id: home_layout_row
+                    on_release: root._open_home_layout()
+                    MDListItemLeadingIcon:
+                        icon: "view-dashboard"
+                    MDListItemHeadlineText:
+                        text: "Home layout"
+
+                MDListItem:
+                    MDListItemLeadingIcon:
+                        icon: "bookmark-multiple"
+                    MDListItemHeadlineText:
+                        text: "Show continue reading"
+                    MDSwitch:
+                        id: continue_reading_switch
+                        pos_hint: {"center_y": .5, "right": 1}
+                        on_active: root._toggle_continue_reading()
+
+                MDLabel:
+                    text: "Updates"
+                    bold: True
+                    adaptive_height: True
+
+                MDListItem:
+                    MDListItemLeadingIcon:
+                        icon: "update"
+                    MDListItemHeadlineText:
+                        text: "Update & download"
+                    MDSwitch:
+                        id: update_and_download_switch
+                        pos_hint: {"center_y": .5, "right": 1}
+                        on_active: root._toggle_update_and_download()
+
+                MDLabel:
+                    text: "Library"
+                    bold: True
+                    adaptive_height: True
+
+                MDLabel:
+                    id: library_info
+                    text: ""
+                    theme_text_color: "Secondary"
+                    font_style: "Label"
+                    role: "medium"
+                    adaptive_height: True
+
+                MDListItem:
+                    on_release: root._confirm_clear()
+                    MDListItemLeadingIcon:
+                        icon: "delete"
+                    MDListItemHeadlineText:
+                        text: "Clear library"
+
+                MDLabel:
+                    text: "About"
+                    bold: True
+                    adaptive_height: True
+
+                MDLabel:
+                    text: root.about_text
+                    theme_text_color: "Secondary"
+                    font_style: "Label"
+                    role: "medium"
+                    adaptive_height: True

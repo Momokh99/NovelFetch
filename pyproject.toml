@@ -47,6 +47,10 @@ dev = [
 [project.urls]
 Repository = "https://github.com/mohamed/webscrapp"
 
+[project.scripts]
+novelfetch-tui = "tui.main:main"
+novelfetch-gui = "gui.main:main"
+
 # ──────────────────────────────────────────────
 # Tool configurations (all in one place)
 # ──────────────────────────────────────────────
@@ -73,11 +77,11 @@ ignore = [
 ]
 
 [tool.ruff.lint.per-file-ignores]
-"android_app/**" = ["F811"]  # redefinition of unused names (Kivy KV includes)
+"gui/**" = ["F811"]  # redefinition of unused names (Kivy KV includes)
 "tests/**" = ["F811", "PT009"]
 
 [tool.ruff.lint.isort]
-known-first-party = ["screens", "sources", "progress", "translation", "epub"]
+known-first-party = ["core", "sources", "tui", "gui"]
 
 [tool.ruff.format]
 quote-style = "double"
@@ -96,8 +100,3 @@ testpaths = ["tests"]
 python_files = ["test_*.py"]
 python_functions = ["test_*"]
 addopts = "-v --tb=short"
-
-[tool.pyright]
-venvPath = "."
-venv = "venv"
-pythonVersion = "3.11"

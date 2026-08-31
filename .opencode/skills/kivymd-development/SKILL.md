@@ -74,10 +74,10 @@ from kivymd.uix.button import (        from kivymd.uix.button import (
 
 ```python
 # screens/__init__.py - Centralized screen registry
-from screens.main_screen import MainScreen
-from screens.home_tab import HomeTab
-from screens.search_tab import SearchTab
-from screens.reader import ReaderScreen
+from gui.screens.main_screen import MainScreen
+from gui.screens.home_tab import HomeTab
+from gui.screens.search_tab import SearchTab
+from gui.screens.reader import ReaderScreen
 
 __all__ = [
     "MainScreen",
@@ -90,7 +90,7 @@ __all__ = [
 ### App Structure Pattern
 
 ```python
-# android_app/main.py
+# gui/main.py
 class NovelFetchApp(MDApp):
     title = "NovelFetch"
     
@@ -117,9 +117,9 @@ class NovelFetchApp(MDApp):
         async_loop.start()
         
         # Register custom widgets
-        import screens.browse
-        import screens.topbar
-        from screens import MainScreen
+        import gui.screens.browse
+        import gui.screens.topbar
+        from gui.screens import MainScreen
         return MainScreen()
 ```
 
@@ -163,7 +163,7 @@ async_loop = AsyncLoop()
 ```python
 # tests/test_reader_logic.py
 import pytest
-from screens.reader import _strip_control_chars, _greedy_wrap
+from gui.screens.reader import _strip_control_chars, _greedy_wrap
 
 def test_strip_control_chars_removes_rtl_marks():
     text = "مرحبا\u200f بالعالم"
@@ -185,7 +185,7 @@ def test_font_clamping():
 ```python
 # tests/test_search_tab_logic.py
 import pytest
-from screens.search_tab import SearchTab
+from gui.screens.search_tab import SearchTab
 
 def test_search_debounce():
     # Test search debouncing logic
@@ -229,7 +229,7 @@ def mock_clock():
 ### Chunked Rendering for Large Text
 
 ```python
-# android_app/screens/reader.py
+# gui/screens/reader.py
 _MAX_CHUNK_PX = 2500  # Max pixels per Kivy Label (GPU texture limit)
 
 def lines_per_chunk(line_h, cap=_MAX_CHUNK_PX):
@@ -284,7 +284,7 @@ def _load_more_chapters(self, *args):
 ### Image Caching
 
 ```python
-# android_app/screens/utils.py
+# gui/screens/utils.py
 import os
 import hashlib
 from kivy.network.urlrequest import UrlRequest
@@ -429,7 +429,7 @@ class MainScreen(MDScreen):
 This project uses HSL-driven theming:
 
 ```python
-# android_app/screens/theme.py
+# gui/gui/screens/theme.py
 from colorsys import hls_to_rgb
 
 def hsl_rgba(h, s, l, a=1.0):
@@ -443,7 +443,7 @@ ACCENT = hsl_rgba(210, 95, 55)  # Vivid blue accent
 ### Arabic RTL Support
 
 ```python
-# android_app/screens/reader.py
+# gui/screens/reader.py
 try:
     import arabic_reshaper
     from bidi.algorithm import get_display

@@ -59,12 +59,11 @@ python main.py
 
 **Architecture:**
 
-- `main.py` — `NovelFetchApp` (Textual `App` subclass), entry point
-- `sources/` — pluggable Source ABC; RoyalRoad implementation with httpx
-- `screens/` — modular screen package: `browse.py`, `reader.py`, `library.py`, `download.py`, `shared.py`, `utils.py`
-- `progress.py` — `ProgressTracker`, `_scan_library`, `_slug_to_title`
-- `epub.py` — `_export_epub`
-- `translation.py` — `_translate_text`
+- `main.py` — entry-point dispatcher (TUI on desktop, GUI on Android)
+- `tui/` — Textual TUI frontend: `main.py` (app), `browse.py`, `reader.py`, `library.py`, `download.py`, `shared.py`, `utils.py`
+- `gui/` — KivyMD GUI frontend (desktop + Android)
+- `core/` — shared framework: `progress.py`, `translation.py`, `epub.py`, `utils.py` (source dispatch)
+- `sources/` — pluggable Source ABC; RoyalRoad/ScribbleHub/WuxiaSpot implementations
 - `novels/` — Downloaded chapters and `progress.json`
 
 ---
@@ -123,7 +122,6 @@ make test                # Run test suite
 
 ### Development Tools
 
-- **Hot-Reload**: `android_app/main_dev.py` watches for file changes
 - **Linting**: Ruff (replaces flake8/black/isort)
 - **Type Checking**: Mypy + Pyright
 - **Testing**: Pytest with coverage

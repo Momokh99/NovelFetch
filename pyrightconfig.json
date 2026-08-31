@@ -1,4 +1,76 @@
 {
+  // android_env  = GUI runtime (kivy 2.3.1, kivymd 2.0.0, httpx).
+  //                kivy is installed system-wide → extraPaths points to /usr/lib/python3.14/site-packages.
+  // myenv        = TUI + tooling env (textual 8.2.7, curl_cffi, ruff, mypy, pyright).
+  //                myenv/bin/pyright is what `make lint` invokes.
+  // GUI logic is suppressed for kivy attribute noise; per-file directives
+  // in update.py / utils.py re-enable type-soundness checks.
   "venvPath": ".",
-  "venv": ".myvenv",
+  "venv": "android_env",
+  "pythonVersion": "3.14",
+  "typeCheckingMode": "basic",
+  "extraPaths": [
+    ".",
+    "myenv/lib/python3.14/site-packages",
+    "/usr/lib/python3.14/site-packages"
+  ],
+  "executionEnvironments": [
+    {
+      "root": "sources",
+      "extraPaths": [
+        ".",
+        "myenv/lib/python3.14/site-packages",
+        "/usr/lib/python3.14/site-packages"
+      ]
+    },
+    {
+      "root": "core",
+      "extraPaths": [
+        ".",
+        "myenv/lib/python3.14/site-packages",
+        "/usr/lib/python3.14/site-packages"
+      ]
+    },
+    {
+      "root": "gui",
+      "extraPaths": [
+        ".",
+        "gui",
+        "myenv/lib/python3.14/site-packages",
+        "/usr/lib/python3.14/site-packages"
+      ],
+      "reportAttributeAccessIssue": "none",
+      "reportOptionalMemberAccess": "none",
+      "reportMissingImports": "none",
+      "reportGeneralTypeIssues": "none"
+    },
+    {
+      "root": "tui",
+      "extraPaths": [
+        ".",
+        "myenv/lib/python3.14/site-packages"
+      ],
+      "reportAttributeAccessIssue": "none"
+    },
+    {
+      "root": "tests",
+      "extraPaths": [
+        ".",
+        "gui",
+        "myenv/lib/python3.14/site-packages",
+        "/usr/lib/python3.14/site-packages"
+      ],
+      "reportAttributeAccessIssue": "none",
+      "reportOptionalMemberAccess": "none"
+    },
+    {
+      "root": ".",
+      "extraPaths": [
+        ".",
+        "gui",
+        "myenv/lib/python3.14/site-packages",
+        "/usr/lib/python3.14/site-packages"
+      ]
+    }
+  ]
 }

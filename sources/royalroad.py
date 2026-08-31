@@ -1,9 +1,12 @@
-from sources.base import Source
-from typing import Optional
-from bs4 import BeautifulSoup
-import urllib.parse
 import os
+import urllib.parse
+from typing import Optional
+
 import httpx
+from bs4 import BeautifulSoup
+
+from sources.base import Source
+
 headers = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
     "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",

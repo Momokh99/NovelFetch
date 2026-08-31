@@ -7,29 +7,29 @@ Create a new KivyMD screen for the NovelFetch app. Follow these patterns:
 
 ## Screen Structure
 
-1. Create Python file in `android_app/screens/` with:
+1. Create Python file in `gui/screens/` with:
    - Proper imports from kivymd.uix
    - Screen class inheriting from MDScreen
    - __init__ method with proper setup
    - Helper methods for common operations
    - Proper async integration if needed
 
-2. Create KV file in `android_app/kv/` with:
+2. Create KV file in `gui/kv/` with:
    - Proper theme imports
    - Screen layout with TopBar
    - Proper padding and spacing using theme constants
    - Adaptive layouts where appropriate
 
-3. Update `android_app/novelfetch.kv` to include new KV file
+3. Update `gui/novelfetch.kv` to include new KV file
 
-4. Update `android_app/screens/__init__.py` to export new screen
+4. Update `gui/screens/__init__.py` to export new screen
 
 ## Template
 
 ```python
-# android_app/screens/{screen_name}.py
+# gui/screens/{screen_name}.py
 from kivymd.uix.screen import MDScreen
-from screens import theme
+from gui.screens import theme
 
 class {ScreenName}Screen(MDScreen):
     """Screen for {purpose}."""
@@ -54,8 +54,8 @@ class {ScreenName}Screen(MDScreen):
 ```
 
 ```kv
-# android_app/kv/{screen_name}.kv
-#:import theme screens.theme
+# gui/kv/{screen_name}.kv
+#:import theme gui.screens.theme
 
 <{ScreenName}Screen>:
     MDBoxLayout:
@@ -78,7 +78,7 @@ class {ScreenName}Screen(MDScreen):
 ## Requirements
 
 - Use KivyMD 2.0 patterns (MDListItem, not OneLineListItem)
-- Follow theme system from screens/theme.py
+- Follow theme system from gui/screens/theme.py
 - Use adaptive_height where appropriate
 - Proper async integration if network calls needed
 - Add tests in tests/ directory

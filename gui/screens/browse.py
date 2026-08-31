@@ -1,0 +1,141 @@
+from kivy.factory import Factory
+from kivy.metrics import dp
+from kivymd.app import MDApp
+from kivymd.uix.boxlayout import MDBoxLayout
+from kivymd.uix.dialog import (
+    MDDialog,
+    MDDialogContentContainer,
+    MDDialogHeadlineText,
+)
+from kivymd.uix.list import MDList, MDListItem, MDListItemHeadlineText
+from kivymd.uix.progressindicator import MDLinearProgressIndicator
+
+from gui.async_runner import async_loop
+from gui.screens.utils import _snack
+
+BROWSE = {
+    "hot": "Hot novels",
+    "latest": "Latest releases",
+    "popular": "Most popular",
+    "completed": "Completed",
+}
+
+class BrowseSection(MDBoxLayout):
+    """The discovery block shared by Home and Search: browse rows + genres."""
+
+    def __init__(self, **kwargs):
+        super().__init__(orientation="vertical", adaptive_height=True, **kwargs)
+        self._busy = False
+        self._genre_dialog = None
+
+        self.browse_list = MDList()
+        for key, label in BROWSE.items():
+            # k=key freezes the loop variable (closure trap)
+            self.browse_list.add_widget(MDListItem(MDListItemHeadlineText(
+                text=label,
+            ), on_release=lambda *_, k=key: self.browse(k)))
+        self.browse_list.add_widget(MDListItem(MDListItemHeadlineText(
+            text="Genres",
+        ), on_release=lambda *_: self.open_genres()))
+        self.add_widget(self.browse_list)
+        self.progress_bar = MDLinearProgressIndicator(
+            indeterminate=True, opacity=0,
+            size_hint_y=None, height=dp(4))
+        self.add_widget(self.progress_bar)
+
+    # ---------- browse ----------
+
+    def browse(self, key):
+        if self._busy:
+            return
+        source = MDApp.get_running_app().current_source
+        if source is None:
+            self._notify("No source selected.")
+            return
+
+        async def coro():
+            soup = await source.fetch_url(source.browse_urls[key])
+            return source.extract_novel_rows(soup)
+
+        self._set_busy(True)
+        async_loop.run(
+            coro(), lambda res, err, k=key: self._on_done(res, err, BROWSE[k]),
+            timeout=30)
+
+    # ---------- genres ----------
+
+
+    def open_genres(self):
+        if self._busy:
+            return
+        source = MDApp.get_running_app().current_source
+        if source is None:
+            self._notify("No source selected.")
+            return
+
+        rows = MDList()
+        for slug, label in source.genres.items():
+            rows.add_widget(MDListItem(MDListItemHeadlineText(
+                text=label,
+            ), on_release=lambda *_, g=slug: self.browse_genre(g)))
+        # Instance ref: a dialog with no strong ref can be GC'd mid-open.
+        self._genre_dialog = MDDialog(
+            MDDialogHeadlineText(
+                text="Genres",
+                halign="left",
+            ),
+            MDDialogContentContainer(rows),
+        )
+        self._genre_dialog.open()
+
+    def browse_genre(self, genre_slug):
+        if self._genre_dialog is not None:
+            self._genre_dialog.dismiss()
+        if self._busy:
+            return
+        source = MDApp.get_running_app().current_source
+        if source is None:
+            self._notify("No source selected.")
+            return
+
+        async def coro():
+            return await source.browse_genre(genre_slug)
+
+        self._set_busy(True)
+        async_loop.run(coro(), lambda res, err: self._on_done(res, err, "Genres"),
+                       timeout=30)
+
+# ---------- result routing ----------
+
+    def _on_done(self, novels, error, title):
+        self._set_busy(False)
+        source = MDApp.get_running_app().current_source
+        if error is not None:
+            self._notify("Failed to fetch novels. Check your connection.")
+        elif getattr(source, "blocked", False):
+            self._notify(f"{source.label} is blocked by anti-bot protection.")
+        elif not novels:
+            self._notify("No novels found.")
+        else:
+            MDApp.get_running_app().goto(
+                "novel_list",
+                novels=novels,
+                source=source,
+                title=title,
+            )
+
+    # ---------- helpers ----------
+
+    def _set_busy(self, busy):
+        self._busy = busy
+        self.browse_list.disabled = busy   # rows ignore taps while fetching
+        self.progress_bar.opacity = 1 if busy else 0
+
+    def _notify(self, text):
+        _snack(text)
+
+
+# BrowseSection is referenced from kv/search_tab.kv before the screens package
+# is imported at build time; register it with the Factory so KV instantiates
+# the real class (with its row-building __init__) instead of a dynamic stub.
+Factory.register("BrowseSection", cls=BrowseSection, module="screens.browse")

@@ -1,10 +1,12 @@
-from sources.base import Source
-from typing import Optional
-from bs4 import BeautifulSoup
-import urllib.parse
-import os
-import httpx
 import asyncio
+import os
+import urllib.parse
+from typing import Optional
+
+import httpx
+from bs4 import BeautifulSoup
+
+from sources.base import Source
 
 headers = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
@@ -175,7 +177,7 @@ class WuxiaSpotSource(Source):
         searchid = None
         total_pages = 1
         for a in page_links:
-            href = a.get("href", "")
+            href = str(a.get("href") or "")
             text = a.text.strip()
             if text.isdigit():
                 num = int(text)
@@ -205,7 +207,7 @@ class WuxiaSpotSource(Source):
 
         links = soup.select(".chapter-list li a")
         for a in links:
-            href = a.get("href", "")
+            href = str(a.get("href") or "")
             title_el = a.select_one(".chapter-title")
             title = title_el.text.strip() if title_el else a.text.strip()
             if href and not href.startswith("http"):
@@ -229,7 +231,7 @@ class WuxiaSpotSource(Source):
                 page_soup = BeautifulSoup(resp.text, "html.parser")
                 page_chapters = []
                 for a in page_soup.select(".chapter-list li a"):
-                    href = a.get("href", "")
+                    href = str(a.get("href") or "")
                     title_el = a.select_one(".chapter-title")
                     title = title_el.text.strip() if title_el else a.text.strip()
                     if href and not href.startswith("http"):

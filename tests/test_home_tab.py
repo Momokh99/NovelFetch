@@ -1,7 +1,7 @@
 """Tests for the Home tab's summary helpers."""
 
-from screens.home_tab import _count_summary, _grid_cols
-from screens.app_settings import save_settings
+from gui.screens.app_settings import save_settings
+from gui.screens.home_tab import _count_summary, _grid_cols
 
 
 def test_count_summary_singular():

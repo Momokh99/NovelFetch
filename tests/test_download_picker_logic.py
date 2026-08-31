@@ -1,7 +1,7 @@
 """Tests for download_picker.py pure logic — subset slicing and CODE_TO_LABEL."""
 
-from progress import LANGUAGES
-from screens.download_picker import _CODE_TO_LABEL
+from core.progress import LANGUAGES
+from gui.screens.download_picker import _CODE_TO_LABEL
 
 
 def test_code_to_label_is_reverse_of_languages():

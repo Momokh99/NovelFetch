@@ -2,8 +2,8 @@
 
 from datetime import datetime, timedelta
 
-from screens.history import HistoryTab
-from screens.update import UpdateTab
+from gui.screens.history import HistoryTab
+from gui.screens.update import UpdateTab
 
 
 def _midnight_ts(days_ago):

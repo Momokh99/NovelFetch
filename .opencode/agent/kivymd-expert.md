@@ -33,7 +33,7 @@ This is the NovelFetch project - a dual-platform novel reader with:
 - Use `MDDialogHeadlineText`, `MDDialogSupportingText` for dialogs
 
 ### KV Language Best Practices
-- Import theme module: `#:import theme screens.theme`
+- Import theme module: `#:import theme gui.screens.theme`
 - Use adaptive_height for dynamic content
 - Use theme constants for spacing: `theme.PAGE_PAD`, `theme.SECTION_GAP`
 - Dynamic theming with `theme_bg_color: "Custom"`

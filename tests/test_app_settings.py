@@ -1,10 +1,10 @@
-"""Tests for android_app/screens/app_settings.py persistence."""
+"""Tests for gui/screens/app_settings.py persistence."""
 
 import json
 
 import pytest
 
-from screens import app_settings
+from gui.screens import app_settings
 
 
 @pytest.fixture(autouse=True)
@@ -28,7 +28,7 @@ def test_layout_saved_and_loaded():
 
 
 def test_home_layout_labels():
-    from screens.settings_tab import HOME_LAYOUTS, _home_layout_label
+    from gui.screens.settings_tab import HOME_LAYOUTS, _home_layout_label
     assert len(HOME_LAYOUTS) == 2
     assert _home_layout_label("A") == "Cards"
     assert _home_layout_label("B") == "List"
@@ -36,7 +36,7 @@ def test_home_layout_labels():
 
 
 def test_read_indicator_labels():
-    from screens.settings_tab import READ_INDICATORS, _read_indicator_label
+    from gui.screens.settings_tab import READ_INDICATORS, _read_indicator_label
     assert [k for k, _ in READ_INDICATORS] == [
         "off", "text", "linear", "percentage", "blocks", "dots", "wave"]
     assert _read_indicator_label("off") == "Off"
@@ -45,7 +45,7 @@ def test_read_indicator_labels():
 
 
 def test_grid_size_labels():
-    from screens.settings_tab import CARD_GRID_SIZES, _grid_size_label
+    from gui.screens.settings_tab import CARD_GRID_SIZES, _grid_size_label
     assert [k for k, _ in CARD_GRID_SIZES] == ["large", "medium", "small"]
     assert _grid_size_label("large") == "Large (1 per row)"
     assert _grid_size_label("medium") == "Medium (2 per row)"

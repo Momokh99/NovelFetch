@@ -2,7 +2,6 @@
 
 import pytest
 
-
 # ---- _toggle_selection logic (pure set operations) ----
 
 class FakeSelection:
