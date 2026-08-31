@@ -108,9 +108,6 @@ android.enable_androidx = True
 # (str) screenOrientation to set for the main activity
 #android.manifest.orientation = fullSensor
 
-# (bool) Indicate whether the screen should stay on
-android.wakelock = True
-
 # (list) Android application meta-data to set (key=value format)
 #android.meta_data =
 

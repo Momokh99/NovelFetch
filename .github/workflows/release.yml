@@ -82,8 +82,9 @@ jobs:
         run: |
           sudo apt-get update
           # mksquashfs is required to package AppImages but is not present on
-          # the default ubuntu-latest image
-          sudo apt-get install -y squashfs-tools file libfuse2
+          # the default ubuntu-latest image. libcairo2-dev is needed to build
+          # pycairo (a transitive dep of kivy) from source inside the AppDir.
+          sudo apt-get install -y squashfs-tools file libfuse2 libcairo2-dev
 
       - name: Install python-appimage
         run: python -m pip install --upgrade pip python-appimage
