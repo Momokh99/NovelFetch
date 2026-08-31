@@ -11,11 +11,13 @@ def _run_gui():
         if p not in sys.path:
             sys.path.insert(0, p)
     from gui.main import NovelFetchApp
+
     NovelFetchApp().run()
 
 
 def _run_tui():
     from tui.main import NovelFetchApp
+
     NovelFetchApp().run()
 
 
@@ -35,15 +37,19 @@ def main():
     args = parser.parse_args()
 
     app = args.app
+    is_android = bool(os.environ.get("ANDROID_ARGUMENT"))
     if app is None:
         # python-for-android sets ANDROID_ARGUMENT when running the packaged
         # app; the desktop TUI env may not even have kivy installed, so don't
         # import it at module scope.
-        app = "gui" if os.environ.get("ANDROID_ARGUMENT") else "tui"
+        app = "gui" if is_android else "tui"
 
     if app == "gui":
         _run_gui()
     else:
+        from core.paths import ensure_data_dir
+
+        ensure_data_dir(dev_root=os.path.dirname(os.path.abspath(__file__)))
         _run_tui()
 
 

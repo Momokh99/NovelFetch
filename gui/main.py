@@ -1,8 +1,20 @@
 import os
 import sys
 
-_APP_DIR = os.path.dirname(os.path.abspath(__file__))
+
+def _app_dir() -> str:
+    if getattr(sys, "frozen", False):
+        # PyInstaller onefile extracts the entry script to the bundle root and
+        # extracts bundled data (gui/) under sys._MEIPASS. Resolve assets from
+        # the real bundle location, not the mis-pointed __file__.
+        meipass = getattr(sys, "_MEIPASS", os.path.dirname(os.path.abspath(__file__)))
+        return os.path.join(meipass, "gui")
+    return os.path.dirname(os.path.abspath(__file__))
+
+
+_APP_DIR = _app_dir()
 _ROOT = os.path.dirname(_APP_DIR)
+
 
 if _APP_DIR not in sys.path:
     sys.path.insert(0, _APP_DIR)
@@ -19,12 +31,22 @@ from kivymd.app import MDApp
 from kivymd.uix.behaviors.ripple_behavior import RectangularRippleBehavior
 
 _orig_init_fbos = RectangularRippleBehavior.init_fbos
+
+
 def _safe_init_fbos(self):
     if self.width > 0 and self.height > 0:
         _orig_init_fbos(self)
     else:
         from kivy.clock import Clock
-        Clock.schedule_once(lambda dt: _orig_init_fbos(self) if self.width > 0 and self.height > 0 else None, 0)
+
+        Clock.schedule_once(
+            lambda dt: (
+                _orig_init_fbos(self) if self.width > 0 and self.height > 0 else None
+            ),
+            0,
+        )
+
+
 RectangularRippleBehavior.init_fbos = _safe_init_fbos
 
 
@@ -39,20 +61,22 @@ class NovelFetchApp(MDApp):
         # stay at the launch directory so CWD-relative data paths (novels/)
         # resolve correctly.
         from kivy.resources import resource_add_path
+
         resource_add_path(_APP_DIR)
         self.kv_file = os.path.join(_APP_DIR, "novelfetch.kv")
         self.current_source = None
 
     def build(self):
-        if platform == "android":
-            os.chdir(self.user_data_dir)
-        else:
-            # Desktop: anchor CWD-relative data paths (novels/, app_settings.json,
-            # progress.json) to the repo root so the app works from any launch
-            # directory. All data modules use bare relative paths against CWD.
-            os.chdir(_ROOT)
+        # Anchor CWD-relative data paths (novels/, app_settings.json,
+        # progress.json) to a single stable root shared with the TUI:
+        # Android user_data_dir, a per-user dir when frozen/AppImage (the
+        # bundle's _MEIPASS/mount is throwaway or read-only), else the repo root.
+        from core.paths import ensure_data_dir
 
+        android_user_data = self.user_data_dir if platform == "android" else None
+        ensure_data_dir(dev_root=_ROOT, android_user_data=android_user_data)
         from gui.screens.app_settings import load_settings
+
         self._app_settings = load_settings()
 
         self.theme_cls.theme_style = self._app_settings["theme_style"]
@@ -61,11 +85,13 @@ class NovelFetchApp(MDApp):
         if platform == "android":
             try:
                 from android import wakelock
+
                 wakelock.acquire("novelfetch_reader")
             except Exception:
                 pass
 
         from gui.async_runner import async_loop
+
         async_loop.start()
 
         # Register custom widget classes in Factory AFTER any platform
@@ -74,21 +100,26 @@ class NovelFetchApp(MDApp):
         import gui.screens.browse  # noqa: F401  (Factory.register BrowseSection)
         import gui.screens.topbar  # noqa: F401  (Factory.register TopBar)
         from gui.screens import MainScreen
+
         return MainScreen()
 
     def on_start(self):
         from sources import REGISTRY
+
         self.current_source = list(REGISTRY.values())[0]
 
     def on_pause(self):
         from core.progress import progress
+
         progress.flush()
         return True
 
     def on_stop(self):
         from core.progress import progress
+
         progress.flush()
         from gui.async_runner import async_loop
+
         async_loop.stop()
 
     def goto(self, name, **kwargs):

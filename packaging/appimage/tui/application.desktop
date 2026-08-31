@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=NovelFetch TUI
+Comment=Novel fetching and reading application (TUI)
+Exec=novelfetch-tui
+Icon=application
+Categories=Office;Utility;
+Terminal=true
+StartupNotify=false

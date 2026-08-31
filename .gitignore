@@ -16,9 +16,12 @@ dist/
 .vscode/
 .idea/
 
-# Downloaded content
+# Downloader content
 novels/
 gui/novels/
+
+# Local wheel staged into AppImage recipes during CI builds
+packaging/appimage/*/novelfetch.whl
 
 # Buildozer / Kivy build artifacts
 .buildozer/

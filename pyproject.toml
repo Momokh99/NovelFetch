@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "novelfetch"
-version = "0.1.0"
+version = "2.0.0"
 description = "A novel fetching and reading application with TUI and Android (KivyMD) frontends"
 readme = "README.md"
 license = "MIT"
@@ -27,8 +27,8 @@ tui = [
     "textual>=8.0.0",
     "curl_cffi>=0.15.0",
 ]
-# Android/KivyMD-specific dependencies
-android = [
+# GUI-specific dependencies (KivyMD desktop + Android)
+gui = [
     "kivy>=2.3.0",
     "kivymd>=2.0.0",
     "arabic-reshaper",
@@ -50,6 +50,13 @@ Repository = "https://github.com/mohamed/webscrapp"
 [project.scripts]
 novelfetch-tui = "tui.main:main"
 novelfetch-gui = "gui.main:main"
+
+[tool.setuptools.packages.find]
+include = ["core*", "sources*", "tui*", "gui*"]
+
+[tool.setuptools.package-data]
+"gui" = ["*.kv", "kv/*.kv", "data/*.ttf", "data/*.png"]
+"tui" = ["*.tcss"]
 
 # ──────────────────────────────────────────────
 # Tool configurations (all in one place)

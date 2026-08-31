@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=NovelFetch
+Comment=Novel fetching and reading application (GUI)
+Exec=novelfetch-gui
+Icon=application
+Categories=Office;Utility;
+Terminal=false
+StartupNotify=true
