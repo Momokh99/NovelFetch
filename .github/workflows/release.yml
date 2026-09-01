@@ -62,13 +62,13 @@ jobs:
         run: pip install ".[gui]"
 
       - name: Build GUI binary (PyInstaller)
-        # KIVY_UNITTEST=1 puts kivy in headless test mode and KIVY_NO_ARGS=1
-        # keeps EventLoop's event list empty at import time, so no window/GL
-        # context is created while collect_all("kivymd") imports kivymd in a
-        # subprocess on the headless runner (which only has OpenGL 1.1).
+        # KIVY_GL_BACKEND=mock makes collect_all("kivymd")'s isolated subprocess
+        # skip the real OpenGL initialization. The runner only has GDI OpenGL
+        # 1.1 (Microsoft Basic Renderer), and the real backend aborts on the
+        # "minimum 2.0 required" check. Do NOT set SDL_VIDEODRIVER=dummy here:
+        # the dummy SDL driver has no GL context at all, which fails earlier.
         env:
-          KIVY_UNITTEST: "1"
-          KIVY_NO_ARGS: "1"
+          KIVY_GL_BACKEND: mock
         run: pyinstaller --clean --noconfirm packaging/novelfetch-gui.spec
 
       - name: Upload Windows binaries
