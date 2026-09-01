@@ -25,6 +25,11 @@ package.domain = org.novelfetch
 # dispatcher) AND the shared modules, so everything gets packaged together.
 source.dir = .
 
+# Pin python-for-android to a release tag rather than nightly master. Master is
+# only stable for Python <= 3.12; the release tags align with the Python 3.14
+# hostpython this build targets, and avoid upstream pip-26 breakage.
+p4a.commit = v2026.05.09
+
 # (list) Source files to include (let empty to include all the files)
 source.include_exts = py,png,jpg,kv,atlas,gif,ttf
 
@@ -41,8 +46,7 @@ source.exclude_dirs = tests, bin, android_env, .git, .buildozer, .venv, tui, nov
 #source.exclude_patterns = license,images/*/*.jpg
 
 # (str) Application versioning (method 1)
-version = 2.0.0
-
+version = 2.0.1
 # (str) Application versioning (method 2)
 # version.regex = __version__ = '['"]{1}([\d.]+)['"]{1}
 # version.filename = %(source.dir)s/main.py
@@ -50,7 +54,7 @@ version = 2.0.0
 # (list) Application requirements
 # curl_cffi is deliberately omitted: it is a compiled extension with no p4a
 # recipe; sources/scriblehub.py imports it lazily and falls back to httpx.
-requirements = python3,kivy==2.3.1,kivymd==2.0.0,httpx,beautifulsoup4,deep-translator,ebooklib,requests,idna,anyio,sniffio,certifi,charset-normalizer,arabic-reshaper,python-bidi
+requirements = python3,kivy==2.3.1,kivymd==2.0.0,httpx,beautifulsoup4,deep-translator,ebooklib==0.20,requests,idna,anyio,sniffio,certifi,charset-normalizer,arabic-reshaper,python-bidi
 
 # (str) Custom source folders for requirements
 # (Sets custom source for any requirements with recipes)

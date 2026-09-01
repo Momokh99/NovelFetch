@@ -3,7 +3,7 @@
 # ==============================================================================
 
 .DEFAULT_GOAL := help
-.PHONY: help setup setup-tui setup-android lint lint-fix format format-check test test-quick test-android run-tui run-kivy run-kivy-dev
+.PHONY: help setup setup-tui setup-android lint lint-fix format format-check test test-quick test-android run-tui run-kivy run-kivy-dev bump-release
 
 help:  ## Display this help
 	@awk 'BEGIN {FS = ":.*##"; printf "\nUsage:\n  make \033[36m<target>\033[0m\n"} \
@@ -91,6 +91,11 @@ pre-commit-install:  ## Install pre-commit hooks
 
 pre-commit-run:  ## Run pre-commit on all files
 	./myenv/bin/pre-commit run --all-files
+
+##@ ────────────────────── Releasing
+
+bump-release:  ## Bump version in pyproject.toml and buildozer.spec (usage: make bump-release VERSION=2.1.0)
+	./myenv/bin/python packaging/release.py --bump $(VERSION)
 
 ##@ ────────────────────── Cleanup
 

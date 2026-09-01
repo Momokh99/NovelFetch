@@ -4,13 +4,34 @@ on:
   push:
     tags:
       - 'v*.*.*'
+  workflow_dispatch:
 
 permissions:
   contents: write
 
 jobs:
+  validate:
+    name: Validate release version
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Resolve and validate version
+        # On tag pushes this fails the release if the tag disagrees with
+        # pyproject.toml / buildozer.spec. On manual dispatch it falls back to
+        # the pyproject version as the single source of truth.
+        id: version
+        run: echo "version=$(python packaging/release.py --check)" >> "$GITHUB_OUTPUT"
+
   wheel:
     name: Build wheel + sdist
+    needs: [validate]
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
@@ -27,16 +48,24 @@ jobs:
       - name: Build wheel and sdist
         run: python -m build
 
+      - name: Smoke test wheel
+        run: |
+          python -m venv /tmp/novelfetch-venv
+          /tmp/novelfetch-venv/bin/pip install --quiet dist/*.whl
+          /tmp/novelfetch-venv/bin/python -c \
+            "from sources import REGISTRY; assert len(REGISTRY) == 3, f'got {len(REGISTRY)} sources'"
+          echo "wheel installs and imports cleanly"
+
       - name: Upload wheel + sdist
         uses: actions/upload-artifact@v4
         with:
           name: wheel
-          path: dist/*.whl
+          path: dist/*
           if-no-files-found: error
 
   desktop:
     name: Windows binaries (TUI + GUI)
-    needs: wheel
+    needs: [validate]
     runs-on: windows-latest
     steps:
       - name: Checkout repository
@@ -58,6 +87,17 @@ jobs:
       - name: Build TUI binary (PyInstaller)
         run: pyinstaller --clean --noconfirm packaging/novelfetch-tui.spec
 
+      - name: Smoke test TUI binary
+        shell: bash
+        run: |
+          timeout 20 ./dist/novelfetch-tui.exe </dev/null >"$TEMP/tui-smoke.log" 2>&1
+          rc=$?
+          if [ $rc -eq 124 ] || [ $rc -eq 0 ] || ! grep -q "Traceback" "$TEMP/tui-smoke.log"; then
+            echo "TUI binary passed the smoke test (rc=$rc)"
+          else
+            echo "TUI binary crashed at startup:"; cat "$TEMP/tui-smoke.log"; exit 1
+          fi
+
       - name: Install GUI dependencies
         run: pip install ".[gui]"
 
@@ -71,6 +111,19 @@ jobs:
           KIVY_GL_BACKEND: mock
         run: pyinstaller --clean --noconfirm packaging/novelfetch-gui.spec
 
+      - name: Smoke test GUI binary
+        # No guaranteed display on this runner, so a startup crash is reported
+        # but does not fail the release.
+        shell: bash
+        run: |
+          timeout 20 ./dist/novelfetch-gui.exe </dev/null >"$TEMP/gui-smoke.log" 2>&1
+          rc=$?
+          if [ $rc -eq 124 ] || [ $rc -eq 0 ] || ! grep -q "Traceback" "$TEMP/gui-smoke.log"; then
+            echo "GUI binary passed the smoke test (rc=$rc)"
+          else
+            echo "GUI binary reported a crash (non-blocking):"; cat "$TEMP/gui-smoke.log"
+          fi
+
       - name: Upload Windows binaries
         uses: actions/upload-artifact@v4
         with:
@@ -80,7 +133,7 @@ jobs:
 
   appimage:
     name: Linux AppImage (GUI)
-    needs: wheel
+    needs: [validate, wheel]
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
@@ -97,7 +150,8 @@ jobs:
           # mksquashfs is required to package AppImages but is not present on
           # the default ubuntu-latest image. libcairo2-dev is needed to build
           # pycairo (a transitive dep of kivy) from source inside the AppDir.
-          sudo apt-get install -y squashfs-tools file libfuse2 libcairo2-dev
+          # xvfb drives the post-build smoke test headlessly.
+          sudo apt-get install -y squashfs-tools file libfuse2 libcairo2-dev xvfb
 
       - name: Install python-appimage
         run: python -m pip install --upgrade pip python-appimage
@@ -108,20 +162,16 @@ jobs:
           name: wheel
           path: wheel
 
-      - name: Stage wheel into recipes
+      - name: Stage wheel into recipe
         run: |
-          VERSION="${GITHUB_REF_NAME#v}"
           WHEEL=$(find wheel -name '*.whl' | head -1)
-          for variant in tui gui; do
-            mkdir -p "packaging/appimage/$variant"
-            cp "$WHEEL" "packaging/appimage/$variant/"
-            # python-appimage pip-installs from a temp dir, so reference the
-            # wheel by absolute path; keep the PEP 427 filename (renaming would
-            # make pip reject it). The [extra] pulls the variant dependencies.
-            ABS="$(realpath "packaging/appimage/$variant/$(basename "$WHEEL")")"
-            printf '%s[%s]\n' "$ABS" "$variant" > "packaging/appimage/$variant/requirements.txt"
-          done
-          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+          mkdir -p "packaging/appimage/gui"
+          cp "$WHEEL" "packaging/appimage/gui/"
+          # python-appimage pip-installs from a temp dir, so reference the
+          # wheel by absolute path; keep the PEP 427 filename (renaming would
+          # make pip reject it). The [extra] pulls the variant dependencies.
+          ABS="$(realpath "packaging/appimage/gui/$(basename "$WHEEL")")"
+          printf '%s[%s]\n' "$ABS" gui > "packaging/appimage/gui/requirements.txt"
 
       - name: Build GUI AppImage
         # python-appimage writes the resulting AppImage to the repo root (CWD),
@@ -131,8 +181,22 @@ jobs:
       - name: Rename AppImage to versioned name
         run: |
           mkdir -p dist
-          cp NovelFetch-*.AppImage "dist/novelfetch-gui-$VERSION.AppImage"
+          cp NovelFetch-*.AppImage "dist/novelfetch-gui-${{ needs.validate.outputs.version }}.AppImage"
           ls -la dist
+
+      - name: Smoke test GUI AppImage
+        # APPIMAGE_EXTRACT_AND_RUN avoids needing FUSE in CI; xvfb + software
+        # GL give Kivy a usable (llvmpipe) context headlessly.
+        run: |
+          APP=$(ls dist/novelfetch-gui-*.AppImage | head -1)
+          timeout 40 env APPIMAGE_EXTRACT_AND_RUN=1 xvfb-run -a \
+            env LIBGL_ALWAYS_SOFTWARE=1 "$APP" </dev/null >/tmp/gui-smoke.log 2>&1
+          rc=$?
+          if [ $rc -eq 124 ] || [ $rc -eq 0 ] || ! grep -q "Traceback" /tmp/gui-smoke.log; then
+            echo "GUI AppImage passed the smoke test (rc=$rc)"
+          else
+            echo "GUI AppImage crashed at startup:"; cat /tmp/gui-smoke.log; exit 1
+          fi
 
       - name: Upload AppImages
         uses: actions/upload-artifact@v4
@@ -143,6 +207,7 @@ jobs:
 
   linux-tui:
     name: Linux TUI binary
+    needs: [validate]
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
@@ -152,9 +217,6 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-
-      - name: Determine version
-        run: echo "VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
 
       - name: Install dependencies
         run: |
@@ -166,7 +228,18 @@ jobs:
 
       - name: Rename binary for terminal invocation
         # Named so it can be run from the terminal by typing NovelFetchTUI.
-        run: mv dist/novelfetch-tui "dist/NovelFetchTUI-$VERSION"
+        run: mv dist/novelfetch-tui "dist/NovelFetchTUI-${{ needs.validate.outputs.version }}"
+
+      - name: Smoke test TUI binary
+        run: |
+          BIN=$(find dist -name 'NovelFetchTUI-*' | head -1)
+          timeout 20 "$BIN" </dev/null >/tmp/tui-smoke.log 2>&1
+          rc=$?
+          if [ $rc -eq 124 ] || [ $rc -eq 0 ] || ! grep -q "Traceback" /tmp/tui-smoke.log; then
+            echo "TUI binary passed the smoke test (rc=$rc)"
+          else
+            echo "TUI binary crashed at startup:"; cat /tmp/tui-smoke.log; exit 1
+          fi
 
       - name: Upload TUI binary
         uses: actions/upload-artifact@v4
@@ -176,7 +249,8 @@ jobs:
           if-no-files-found: error
 
   android:
-    name: Android APK
+    name: Android debug APK
+    needs: [validate]
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
@@ -203,27 +277,41 @@ jobs:
 
       - name: Install buildozer
         run: |
-          python -m pip install --upgrade pip
+          python -m pip install --upgrade 'pip<26'
           pip install --upgrade buildozer cython==0.29.34
 
       - name: Cache buildozer global
         uses: actions/cache@v4
         with:
-          path: .buildozer_global
+          path: ~/.buildozer
           key: buildozer-${{ hashFiles('buildozer.spec') }}
 
       - name: Build APK (buildozer)
         # LT_SYS_SYMBOL_USCORE (used by p4a's libffi recipe) ships in
         # /usr/share/aclocal/ltdl.m4, provided by the libltdl-dev package.
         # ACLOCAL_PATH just makes sure the system aclocal dirs are searched.
+        #
+        # PIP_CONSTRAINT=pip<26 is picked up by p4a's build venv (it inherits
+        # os.environ). p4a force-upgrades pip with `pip install -U pip` during
+        # setup; pip >= 26 removed `BuildDependencyInstallError` from
+        # pip._internal.exceptions, which crashes the build with an ImportError.
         env:
           ACLOCAL_PATH: /usr/share/aclocal:/usr/local/share/aclocal
+          PIP_CONSTRAINT: "pip<26"
         run: yes | buildozer -v android debug
+
+      - name: Smoke test APK
+        run: |
+          APK=$(find bin -name '*.apk' | head -1)
+          test -n "$APK" || { echo "no APK produced"; exit 1; }
+          unzip -l "$APK" | grep -q "classes.dex" \
+            || { echo "APK missing classes.dex"; exit 1; }
+          echo "APK smoke test passed: $(basename "$APK")"
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: android
+          name: android-debug-apk
           path: bin/*.apk
           if-no-files-found: error
 
@@ -244,7 +332,9 @@ jobs:
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: v${{ needs.validate.outputs.version }}
           files: artifacts/*
+          prerelease: ${{ contains(github.ref_name, '-') }}
           generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
