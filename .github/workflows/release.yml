@@ -62,11 +62,12 @@ jobs:
         run: pip install ".[gui]"
 
       - name: Build GUI binary (PyInstaller)
-        # KIVY_NO_ARGS=1 keeps kivy's EventLoop list empty at import time, so
-        # ensure_window() returns early and no real window/GL context is created
-        # while collect_all("kivymd") imports kivymd in a subprocess on the
-        # headless runner (which only has OpenGL 1.1).
+        # KIVY_UNITTEST=1 puts kivy in headless test mode and KIVY_NO_ARGS=1
+        # keeps EventLoop's event list empty at import time, so no window/GL
+        # context is created while collect_all("kivymd") imports kivymd in a
+        # subprocess on the headless runner (which only has OpenGL 1.1).
         env:
+          KIVY_UNITTEST: "1"
           KIVY_NO_ARGS: "1"
         run: pyinstaller --clean --noconfirm packaging/novelfetch-gui.spec
 
