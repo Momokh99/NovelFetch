@@ -66,7 +66,7 @@ jobs:
           if-no-files-found: error
 
   appimage:
-    name: Linux AppImages (TUI + GUI)
+    name: Linux AppImage (GUI)
     needs: wheel
     runs-on: ubuntu-latest
     steps:
@@ -110,17 +110,15 @@ jobs:
           done
           echo "VERSION=$VERSION" >> "$GITHUB_ENV"
 
-      - name: Build TUI AppImage
-        run: APPIMAGE_EXTRACT_AND_RUN=1 python -m python_appimage build app -p 3.11 packaging/appimage/tui
-
       - name: Build GUI AppImage
+        # python-appimage writes the resulting AppImage to the repo root (CWD),
+        # named after the desktop file's Name= field (NovelFetch-x86_64.AppImage).
         run: APPIMAGE_EXTRACT_AND_RUN=1 python -m python_appimage build app -p 3.11 packaging/appimage/gui
 
-      - name: Rename AppImages to versioned names
+      - name: Rename AppImage to versioned name
         run: |
           mkdir -p dist
-          cp packaging/appimage/tui/*-x86_64.AppImage "dist/novelfetch-tui-$VERSION.AppImage" 2>/dev/null || true
-          cp packaging/appimage/gui/*-x86_64.AppImage "dist/novelfetch-gui-$VERSION.AppImage" 2>/dev/null || true
+          cp NovelFetch-*.AppImage "dist/novelfetch-gui-$VERSION.AppImage"
           ls -la dist
 
       - name: Upload AppImages
@@ -128,6 +126,40 @@ jobs:
         with:
           name: appimage
           path: dist/*.AppImage
+          if-no-files-found: error
+
+  linux-tui:
+    name: Linux TUI binary
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Determine version
+        run: echo "VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pyinstaller ".[tui]"
+
+      - name: Build TUI binary (PyInstaller)
+        run: pyinstaller --clean --noconfirm packaging/novelfetch-tui.spec
+
+      - name: Rename binary for terminal invocation
+        # Named so it can be run from the terminal by typing NovelFetchTUI.
+        run: mv dist/novelfetch-tui "dist/NovelFetchTUI-$VERSION"
+
+      - name: Upload TUI binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-tui
+          path: dist/NovelFetchTUI-$VERSION
           if-no-files-found: error
 
   android:
@@ -170,8 +202,11 @@ jobs:
       - name: Build APK (buildozer)
         # ACLOCAL_PATH lets aclocal find libtool's m4 macros
         # (LT_SYS_SYMBOL_USCORE) which p4a's bundled autoconf otherwise misses.
+        # ACLOCAL_FLAGS prepends the system m4 dir so it wins over p4a's own
+        # old bundled m4/libtool.m4 (which lacks LT_SYS_SYMBOL_USCORE).
         env:
           ACLOCAL_PATH: /usr/share/aclocal:/usr/local/share/aclocal
+          ACLOCAL_FLAGS: -I /usr/share/aclocal
         run: yes | buildozer -v android debug
 
       - name: Upload APK
@@ -183,7 +218,7 @@ jobs:
 
   publish:
     name: Publish release
-    needs: [wheel, desktop, appimage, android]
+    needs: [wheel, desktop, appimage, linux-tui, android]
     runs-on: ubuntu-latest
     steps:
       - name: Download all artifacts

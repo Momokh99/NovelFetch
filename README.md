@@ -1,16 +1,16 @@
 # NovelFetch
 
-A TUI novel reader with a pluggable source system. Browse, search, download, and read chapters — all in the terminal.
+A terminal + mobile novel reader with a pluggable source system. Browse, search, download, and read chapters.
 
 ```
      ███╗   ██╗ ██████╗ ██╗   ██╗███████╗██╗     ██████╗ ██╗███╗   ██╗
      ████╗  ██║██╔═══██╗██║   ██║██╔════╝██║     ██╔══██╗██║████╗  ██║
-     ██╔██╗ ██║██║   ██║██║   ██║█████╗  ██║     ██████╔╝██║██╔██╗ ██╗
+     ██╔██╗ ██║██║   ██║██║   ██║█████╗  ██║     ██████╔╝██║██╔██╗ ██║
      ██║╚██╗██║██║   ██║╚██╗ ██╔╝██╔══╝  ██║     ██╔══██╗██║██║╚██╗██║
      ██║ ╚████║╚██████╔╝ ╚████╔╝ ███████╗███████╗██████╔╝██║██║ ╚████║
      ╚═╝  ╚═══╝ ╚═════╝   ╚═══╝  ╚══════╝╚══════╝╚═════╝ ╚═╝╚═╝  ╚═══╝
      ════════════════════════════════════════════════════════════════════
-                          TUI Novel Reader v2
+                          TUI + GUI Novel Reader v2
 ```
 
 ![menu](https://img.shields.io/badge/built%20with-Textual-blue)
@@ -26,6 +26,7 @@ A TUI novel reader with a pluggable source system. Browse, search, download, and
 - **Progress tracking** — auto-saves last chapter; ✓ marks read chapters
 - **Download dialog** — All, Range, or Translated; progress bar with translation warning
 - **Translation** — Google Translate (12 languages); Arabic RTL layout
+- **EPUB export** — generate EPUB files from downloaded chapters
 - **Delete with safety** — double-press `x` to confirm deletion
 
 Key bindings in the reader:
@@ -44,14 +45,35 @@ Key bindings in the reader:
 
 ## Installation
 
+### Quick start
+
 ```bash
 git clone https://github.com/Momokh99/NovelFetch.git
 cd NovelFetch
-python -m venv venv
-source venv/bin/activate  # Windows: venv\Scripts\activate
-pip install textual httpx beautifulsoup4 deep-translator
-python main.py
+make setup          # creates both environments (TUI + GUI)
+make pre-commit-install
 ```
+
+### Running
+
+```bash
+make run-tui        # Textual TUI (terminal)
+make run-kivy       # KivyMD GUI (desktop)
+```
+
+### What `make setup` does
+
+The project uses two separate virtual environments:
+
+| Environment | Purpose | Created by |
+|-------------|---------|------------|
+| `myenv/` | TUI + code quality tools (Ruff, mypy, Pyright) | `make setup-tui` |
+| `android_env/` | KivyMD GUI + tests | `make setup-android` |
+
+Dependencies are split across `pyproject.toml` optional groups:
+- **Core**: `httpx`, `beautifulsoup4`, `deep-translator`, `ebooklib`
+- **TUI**: `textual`, `curl_cffi`
+- **GUI**: `kivy`, `kivymd`, `arabic-reshaper`, `python-bidi`
 
 ---
 
@@ -59,11 +81,11 @@ python main.py
 
 **Architecture:**
 
-- `main.py` — entry-point dispatcher (TUI on desktop, GUI on Android)
-- `tui/` — Textual TUI frontend: `main.py` (app), `browse.py`, `reader.py`, `library.py`, `download.py`, `shared.py`, `utils.py`
-- `gui/` — KivyMD GUI frontend (desktop + Android)
+- `main.py` — entry-point dispatcher (TUI or GUI; defaults to TUI on desktop, GUI on Android)
+- `tui/` — Textual TUI frontend: `main.py` (app), `main_menu.py`, `browse.py`, `reader.py`, `library.py`, `download.py`, `shared.py`, `utils.py`, `novelfetch.tcss`
+- `gui/` — KivyMD GUI frontend (desktop + Android): `main.py`, `screens/` (browse, reader, chapter list, download, library, settings, history), `kv/`, `data/`
 - `core/` — shared framework: `progress.py`, `translation.py`, `epub.py`, `utils.py` (source dispatch)
-- `sources/` — pluggable Source ABC; RoyalRoad/ScribbleHub/WuxiaSpot implementations
+- `sources/` — pluggable Source interface; RoyalRoad, ScribbleHub, WuxiaSpot implementations
 - `novels/` — Downloaded chapters and `progress.json`
 
 ---
@@ -71,25 +93,18 @@ python main.py
 ## Roadmap
 
 - [x] TUI mode (Textual interface)
+- [x] GUI mode (KivyMD desktop + Android)
 - [x] Resume from last chapter (progress.json)
 - [x] Search with auto-type and pagination
 - [x] Translation (Google Translate, 12 languages, RTL support)
-- [ ] Better text formatting (italics, line breaks, spacing)
-- [ ] Search filters (genre, status, rating)
 - [x] Multi-source architecture (RoyalRoad, ScribbleHub, WuxiaSpot)
 - [x] Download dialog (All, Range, Translated)
 - [x] Offline reading mode
-- [ ] Reading history across sessions
-- [ ] **Android app (KivyMD)** — cross-platform mobile UI reusing all source modules
-  - [ ] Source selection screen (cards for each source)
-  - [ ] Search with debounce + pagination
-  - [ ] Browse (hot, latest, popular, genres)
-  - [ ] Chapter list with read progress checkmarks
-  - [ ] Reader screen (prev/next, font size, night mode, translation)
-  - [ ] Download dialog (single, all, range, translated)
-  - [ ] Library screen (local novels, resume reading)
-  - [ ] Settings (dark mode, clear cache)
-  - [ ] APK build via Buildozer
+- [x] Reading history across sessions
+- [x] EPUB export
+- [ ] Better text formatting (italics, line breaks, spacing)
+- [ ] Search filters (genre, status, rating)
+- [ ] APK build via Buildozer
 
 ---
 
@@ -112,9 +127,10 @@ make test                # Run test suite
 
 | Command | Description |
 |---------|-------------|
-| `make setup` | Create venv and install all dependencies |
-| `make run-kivy-dev` | Run KivyMD app with hot-reload |
-| `make lint` | Run Ruff + mypy |
+| `make setup` | Create both venvs and install all dependencies |
+| `make run-tui` | Run TUI app (myenv) |
+| `make run-kivy` | Run KivyMD GUI app (android_env) |
+| `make lint` | Run Ruff + mypy + Pyright |
 | `make format` | Auto-format code |
 | `make test` | Run test suite with coverage |
 | `make android-debug` | Build debug APK |
@@ -127,17 +143,8 @@ make test                # Run test suite
 - **Testing**: Pytest with coverage
 - **Pre-commit**: Auto-format on commit
 
-### Skills & Agents
-
-Custom KivyMD development skills are available in `.opencode/skills/`:
-
-- `kivymd-development` - KivyMD 2.0 patterns and best practices
-- `python-testing-patterns` - Testing patterns for Python
-- `python-packaging` - Modern Python packaging
-- And more...
-
 ---
 
 ## Disclaimer
 
-This tool scrapes publicly available content for personal use. Novels belong to their authors and translators. Support them if you can.
+This tool scrapes publicly available content for personal use only. Novels belong to their authors and translators. Do not redistribute downloaded content. Support the creators if you enjoy their work.

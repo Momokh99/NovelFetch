@@ -21,6 +21,7 @@ Terms in use, to keep skills' output consistent with how the project actually ta
 - **progress** — the last-read position per novel; powers read/unread and resume.
 - **tracked** — a novel marked to monitor for updates/downloads.
 - **translation** — transforming chapter text to another language (Google Translate, 12 languages; Arabic RTL).
+- **EPUB export** — generating EPUB files from downloaded chapters for offline reading on e-readers.
 - **TUI app** — the terminal (Textual) frontend; lives in `tui/`.
 - **GUI app** — the KivyMD frontend, desktop and Android; lives in `gui/`.
 - **core** — the framework shared by both frontends (progress, translation, EPUB, source dispatch); lives in `core/`.

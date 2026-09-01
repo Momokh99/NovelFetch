@@ -45,7 +45,7 @@ dev = [
 ]
 
 [project.urls]
-Repository = "https://github.com/mohamed/webscrapp"
+Repository = "https://github.com/Momokh99/NovelFetch"
 
 [project.scripts]
 novelfetch-tui = "tui.main:main"
