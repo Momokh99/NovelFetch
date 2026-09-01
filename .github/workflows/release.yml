@@ -47,15 +47,25 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Install dependencies
+      - name: Install TUI dependencies
+        # Build the TUI first with only TUI deps installed. Installing .[gui]
+        # would pull in kivy, whose PyInstaller hook initializes an OpenGL
+        # context at build time and crashes headless Windows runners (GL 1.1).
         run: |
           python -m pip install --upgrade pip
-          pip install pyinstaller ".[gui]"
+          pip install pyinstaller ".[tui]"
 
       - name: Build TUI binary (PyInstaller)
         run: pyinstaller --clean --noconfirm packaging/novelfetch-tui.spec
 
+      - name: Install GUI dependencies
+        run: pip install ".[gui]"
+
       - name: Build GUI binary (PyInstaller)
+        # KIVY_WINDOW=mock avoids creating a real GL context while kivy's build
+        # hook imports it on the headless runner (which only has OpenGL 1.1).
+        env:
+          KIVY_WINDOW: mock
         run: pyinstaller --clean --noconfirm packaging/novelfetch-gui.spec
 
       - name: Upload Windows binaries
@@ -159,7 +169,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: linux-tui
-          path: dist/NovelFetchTUI-$VERSION
+          path: dist/NovelFetchTUI-*
           if-no-files-found: error
 
   android:
@@ -184,7 +194,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y git zip unzip autoconf automake libtool \
-            libtool-bin autoconf-archive pkg-config \
+            libtool-bin autoconf-archive libltdl-dev pkg-config \
             zlib1g-dev libncurses5-dev libncursesw5-dev libtinfo6 cmake \
             libffi-dev libssl-dev autopoint gettext
 
@@ -200,13 +210,11 @@ jobs:
           key: buildozer-${{ hashFiles('buildozer.spec') }}
 
       - name: Build APK (buildozer)
-        # ACLOCAL_PATH lets aclocal find libtool's m4 macros
-        # (LT_SYS_SYMBOL_USCORE) which p4a's bundled autoconf otherwise misses.
-        # ACLOCAL_FLAGS prepends the system m4 dir so it wins over p4a's own
-        # old bundled m4/libtool.m4 (which lacks LT_SYS_SYMBOL_USCORE).
+        # LT_SYS_SYMBOL_USCORE (used by p4a's libffi recipe) ships in
+        # /usr/share/aclocal/ltdl.m4, provided by the libltdl-dev package.
+        # ACLOCAL_PATH just makes sure the system aclocal dirs are searched.
         env:
           ACLOCAL_PATH: /usr/share/aclocal:/usr/local/share/aclocal
-          ACLOCAL_FLAGS: -I /usr/share/aclocal
         run: yes | buildozer -v android debug
 
       - name: Upload APK
