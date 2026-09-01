@@ -50,7 +50,7 @@ version = 2.0.0
 # (list) Application requirements
 # curl_cffi is deliberately omitted: it is a compiled extension with no p4a
 # recipe; sources/scriblehub.py imports it lazily and falls back to httpx.
-requirements = python3,kivy==2.3.1,kivymd==2.0.0,httpx,beautifulsoup4,deep-translator,EbookLib,requests,idna,anyio,sniffio,certifi,charset-normalizer,arabic-reshaper,python-bidi
+requirements = python3,kivy==2.3.1,kivymd==2.0.0,httpx,beautifulsoup4,deep-translator,ebooklib,requests,idna,anyio,sniffio,certifi,charset-normalizer,arabic-reshaper,python-bidi
 
 # (str) Custom source folders for requirements
 # (Sets custom source for any requirements with recipes)
@@ -127,7 +127,9 @@ android.minapi = 21
 #android.sdk = 30
 
 # (str) Android NDK version to use
-#android.ndk = 25b
+# r25b is the known-stable NDK for python-for-android; newer NDKs (r26+/r28c)
+# can break p4a's legacy toolchain (removed GCC wrappers / unified headers).
+android.ndk = 25b
 
 # (bool) Use Android private data storage (creates ~/.kivy)
 #android.private_storage = True

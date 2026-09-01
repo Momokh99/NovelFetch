@@ -151,9 +151,10 @@ jobs:
       - name: Install system dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y git zip unzip autoconf libtool pkg-config \
+          sudo apt-get install -y git zip unzip autoconf automake libtool \
+            libtool-bin autoconf-archive pkg-config \
             zlib1g-dev libncurses5-dev libncursesw5-dev libtinfo6 cmake \
-            libffi-dev libssl-dev automake autopoint gettext
+            libffi-dev libssl-dev autopoint gettext
 
       - name: Install buildozer
         run: |
@@ -167,6 +168,10 @@ jobs:
           key: buildozer-${{ hashFiles('buildozer.spec') }}
 
       - name: Build APK (buildozer)
+        # ACLOCAL_PATH lets aclocal find libtool's m4 macros
+        # (LT_SYS_SYMBOL_USCORE) which p4a's bundled autoconf otherwise misses.
+        env:
+          ACLOCAL_PATH: /usr/share/aclocal:/usr/local/share/aclocal
         run: yes | buildozer -v android debug
 
       - name: Upload APK
