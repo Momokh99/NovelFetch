@@ -13,6 +13,8 @@ jobs:
   validate:
     name: Validate release version
     runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -277,7 +279,7 @@ jobs:
           sudo apt-get install -y git zip unzip autoconf automake libtool \
             libtool-bin autoconf-archive libltdl-dev pkg-config \
             zlib1g-dev libncurses5-dev libncursesw5-dev libtinfo6 cmake \
-            libffi-dev libssl-dev autopoint gettext
+            libffi-dev libssl-dev autopoint gettext ccache
 
       - name: Install buildozer
         run: |
@@ -289,6 +291,17 @@ jobs:
         with:
           path: ~/.buildozer
           key: buildozer-${{ hashFiles('buildozer.spec') }}
+          # buildozer.spec embeds `version`, so a release bump changes the key;
+          # restore-keys lets the last SDK/NDK/toolchain cache survive the bump
+          # instead of forcing a ~3.4GB re-download.
+          restore-keys: buildozer-
+
+      - name: Cache ccache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ccache
+          key: ccache-${{ hashFiles('buildozer.spec') }}
+          restore-keys: ccache-
 
       - name: Build APK (buildozer)
         # LT_SYS_SYMBOL_USCORE (used by p4a's libffi recipe) ships in
@@ -300,12 +313,18 @@ jobs:
         # removed `BuildDependencyInstallError` from pip._internal.exceptions,
         # which crashes the build with an ImportError. The env var propagates
         # into p4a's build venv (it inherits os.environ).
+        #
+        # ccache: p4a auto-wraps CC/CXX with ccache when it's on PATH.
+        # CCACHE_COMPILERCHECK=content keys objects on compiler content rather
+        # than mtime/size across toolchains, making the cache reusable.
         env:
           ACLOCAL_PATH: /usr/share/aclocal:/usr/local/share/aclocal
           PIP_CONSTRAINT: /tmp/pip-constraints.txt
+          CCACHE_COMPILERCHECK: content
+          USE_CCACHE: '1'
         run: |
           printf 'pip<26\n' > /tmp/pip-constraints.txt
-          yes | buildozer -v android debug
+          yes | buildozer android debug
 
       - name: Smoke test APK
         run: |
