@@ -90,6 +90,7 @@ jobs:
       - name: Smoke test TUI binary
         shell: bash
         run: |
+          set +e
           timeout 20 ./dist/novelfetch-tui.exe </dev/null >"$TEMP/tui-smoke.log" 2>&1
           rc=$?
           if [ $rc -eq 124 ] || [ $rc -eq 0 ] || ! grep -q "Traceback" "$TEMP/tui-smoke.log"; then
@@ -116,6 +117,7 @@ jobs:
         # but does not fail the release.
         shell: bash
         run: |
+          set +e
           timeout 20 ./dist/novelfetch-gui.exe </dev/null >"$TEMP/gui-smoke.log" 2>&1
           rc=$?
           if [ $rc -eq 124 ] || [ $rc -eq 0 ] || ! grep -q "Traceback" "$TEMP/gui-smoke.log"; then
@@ -188,6 +190,7 @@ jobs:
         # APPIMAGE_EXTRACT_AND_RUN avoids needing FUSE in CI; xvfb + software
         # GL give Kivy a usable (llvmpipe) context headlessly.
         run: |
+          set +e
           APP=$(ls dist/novelfetch-gui-*.AppImage | head -1)
           timeout 40 env APPIMAGE_EXTRACT_AND_RUN=1 xvfb-run -a \
             env LIBGL_ALWAYS_SOFTWARE=1 "$APP" </dev/null >/tmp/gui-smoke.log 2>&1
@@ -232,6 +235,7 @@ jobs:
 
       - name: Smoke test TUI binary
         run: |
+          set +e
           BIN=$(find dist -name 'NovelFetchTUI-*' | head -1)
           timeout 20 "$BIN" </dev/null >/tmp/tui-smoke.log 2>&1
           rc=$?
@@ -291,14 +295,17 @@ jobs:
         # /usr/share/aclocal/ltdl.m4, provided by the libltdl-dev package.
         # ACLOCAL_PATH just makes sure the system aclocal dirs are searched.
         #
-        # PIP_CONSTRAINT=pip<26 is picked up by p4a's build venv (it inherits
-        # os.environ). p4a force-upgrades pip with `pip install -U pip` during
-        # setup; pip >= 26 removed `BuildDependencyInstallError` from
-        # pip._internal.exceptions, which crashes the build with an ImportError.
+        # PIP_CONSTRAINT points at a constraint FILE limiting pip to <26. p4a
+        # force-upgrades pip with `pip install -U pip` during setup, and pip >= 26
+        # removed `BuildDependencyInstallError` from pip._internal.exceptions,
+        # which crashes the build with an ImportError. The env var propagates
+        # into p4a's build venv (it inherits os.environ).
         env:
           ACLOCAL_PATH: /usr/share/aclocal:/usr/local/share/aclocal
-          PIP_CONSTRAINT: "pip<26"
-        run: yes | buildozer -v android debug
+          PIP_CONSTRAINT: /tmp/pip-constraints.txt
+        run: |
+          printf 'pip<26\n' > /tmp/pip-constraints.txt
+          yes | buildozer -v android debug
 
       - name: Smoke test APK
         run: |
