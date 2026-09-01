@@ -62,12 +62,12 @@ jobs:
         run: pip install ".[gui]"
 
       - name: Build GUI binary (PyInstaller)
-        # SDL_VIDEODRIVER=dummy avoids creating a real window on the headless
-        # runner, and KIVY_GL_BACKEND=mock skips the OpenGL 1.1 version check
-        # while kivy's build hook imports kivymd in an isolated subprocess.
+        # KIVY_NO_ARGS=1 keeps kivy's EventLoop list empty at import time, so
+        # ensure_window() returns early and no real window/GL context is created
+        # while collect_all("kivymd") imports kivymd in a subprocess on the
+        # headless runner (which only has OpenGL 1.1).
         env:
-          SDL_VIDEODRIVER: dummy
-          KIVY_GL_BACKEND: mock
+          KIVY_NO_ARGS: "1"
         run: pyinstaller --clean --noconfirm packaging/novelfetch-gui.spec
 
       - name: Upload Windows binaries
