@@ -343,7 +343,7 @@ jobs:
 
   publish:
     name: Publish release
-    needs: [wheel, desktop, appimage, linux-tui, android]
+    needs: [validate, wheel, desktop, appimage, linux-tui, android]
     runs-on: ubuntu-latest
     steps:
       - name: Download all artifacts
