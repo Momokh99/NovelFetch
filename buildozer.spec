@@ -46,7 +46,7 @@ source.exclude_dirs = tests, bin, android_env, .git, .buildozer, .venv, tui, nov
 #source.exclude_patterns = license,images/*/*.jpg
 
 # (str) Application versioning (method 1)
-version = 2.0.2
+version = 2.0.3
 # (str) Application versioning (method 2)
 # version.regex = __version__ = '['"]{1}([\d.]+)['"]{1}
 # version.filename = %(source.dir)s/main.py
@@ -54,7 +54,11 @@ version = 2.0.2
 # (list) Application requirements
 # curl_cffi is deliberately omitted: it is a compiled extension with no p4a
 # recipe; sources/scriblehub.py imports it lazily and falls back to httpx.
-requirements = python3,kivy==2.3.1,kivymd==2.0.0,httpx,beautifulsoup4,deep-translator,ebooklib==0.20,requests,idna,anyio,sniffio,certifi,charset-normalizer,arabic-reshaper,python-bidi
+# KivyMD 2.0.0 imports materialyoucolor at theming.py module load (via
+# kivymd.app -> MDApp), so it must be bundled or the app crashes at startup
+# with "No module named 'materialyoucolor'". Also pull in the rest of KivyMD's
+# runtime deps (pillow, materialshapes, asynckivy) so nothing breaks lazily.
+requirements = python3,kivy==2.3.1,kivymd==2.0.0,materialyoucolor>=3.0.3,materialshapes>=0.3,pillow,asynckivy,httpx,beautifulsoup4,deep-translator,ebooklib==0.20,requests,idna,anyio,sniffio,certifi,charset-normalizer,arabic-reshaper,python-bidi
 
 # (str) Custom source folders for requirements
 # (Sets custom source for any requirements with recipes)
