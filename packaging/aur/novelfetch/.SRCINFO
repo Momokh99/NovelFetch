@@ -1,0 +1,24 @@
+pkgbase = novelfetch
+	pkgdesc = Novel reader & downloader with a Textual TUI over a pluggable scraper core (RoyalRoad, ScribbleHub, WuxiaSpot)
+	pkgver = 2.0.2
+	pkgrel = 1
+	url = https://github.com/Momokh99/NovelFetch
+	arch = any
+	license = MIT
+	makedepends = python-build
+	makedepends = python-installer
+	makedepends = python-setuptools
+	makedepends = python-wheel
+	depends = python
+	depends = python-beautifulsoup4
+	depends = python-curl_cffi
+	depends = python-deep-translator
+	depends = python-ebooklib
+	depends = python-httpx
+	depends = python-textual
+	optdepends = python-kivy: KivyMD GUI frontend
+	optdepends = python-kivymd: KivyMD GUI frontend
+	source = novelfetch-2.0.2.tar.gz::https://github.com/Momokh99/NovelFetch/releases/download/v2.0.2/novelfetch-2.0.2.tar.gz
+	sha256sums = 35071230237fa630152f686aea7094c4337cc2d1948410c56cebe2889e3792ef
+
+pkgname = novelfetch

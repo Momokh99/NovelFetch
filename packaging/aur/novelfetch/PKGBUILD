@@ -1,0 +1,38 @@
+# Maintainer: Mohamed <mohamedkhamekhami@gmail.com>
+pkgname=novelfetch
+pkgver=2.0.2
+pkgrel=1
+pkgdesc='Novel reader & downloader with a Textual TUI over a pluggable scraper core (RoyalRoad, ScribbleHub, WuxiaSpot)'
+arch=('any')
+url='https://github.com/Momokh99/NovelFetch'
+license=('MIT')
+depends=(
+  'python'
+  'python-beautifulsoup4'
+  'python-curl_cffi'
+  'python-deep-translator'
+  'python-ebooklib'
+  'python-httpx'
+  'python-textual'
+)
+optdepends=(
+  'python-kivy: KivyMD GUI frontend'
+  'python-kivymd: KivyMD GUI frontend'
+)
+makedepends=('python-build' 'python-installer' 'python-setuptools' 'python-wheel')
+source=("novelfetch-$pkgver.tar.gz::https://github.com/Momokh99/NovelFetch/releases/download/v$pkgver/novelfetch-$pkgver.tar.gz")
+sha256sums=('35071230237fa630152f686aea7094c4337cc2d1948410c56cebe2889e3792ef')
+
+build() {
+    cd "$srcdir/novelfetch-$pkgver"
+    python -m build --wheel --no-isolation
+}
+
+package() {
+    cd "$srcdir/novelfetch-$pkgver"
+    python -m installer --destdir="$pkgdir" dist/*.whl
+    # The GUI frontend needs KivyMD >= 2.0.0, which is not packaged for Arch
+    # (AUR only carries 1.2.0), so its console script would only ever raise an
+    # ImportError. Drop it to keep the installation honest.
+    rm -f "$pkgdir/usr/bin/novelfetch-gui"
+}

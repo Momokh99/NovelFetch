@@ -1,0 +1,16 @@
+pkgbase = python-deep-translator
+	pkgdesc = A flexible free and unlimited tool to translate between different languages using multiple translators
+	pkgver = 1.11.4
+	pkgrel = 1
+	url = https://github.com/nidhaloff/deep-translator
+	arch = any
+	license = MIT
+	makedepends = python-build
+	makedepends = python-installer
+	makedepends = python-poetry-core
+	makedepends = python-wheel
+	depends = python
+	source = deep_translator-1.11.4.tar.gz::https://files.pythonhosted.org/packages/7d/03/8fa7635c729a01de71151894cdf002ad6d245bfd6d1a731da864cf534dcf/deep_translator-1.11.4.tar.gz
+	sha256sums = 801260c69231138707ea88a0955e484db7d40e210c9e0ae0f77372ffda5f4bf5
+
+pkgname = python-deep-translator
