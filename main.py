@@ -49,7 +49,11 @@ def main():
     else:
         from core.paths import ensure_data_dir
 
-        ensure_data_dir(dev_root=os.path.dirname(os.path.abspath(__file__)))
+        here = os.path.dirname(os.path.abspath(__file__))
+        if os.path.isdir(os.path.join(here, ".git")):
+            ensure_data_dir(dev_root=here)
+        else:
+            ensure_data_dir()
         _run_tui()
 
 

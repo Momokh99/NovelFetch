@@ -10,10 +10,13 @@ Resolution order (first match wins):
 1. ``$NOVELFETCH_DATA_DIR`` -- explicit override for tests and tools.
 2. ``android_user_data`` -- Kivy ``user_data_dir`` when running on Android.
 3. Per-user home dir for self-contained packaging -- AppImage mounts are
-   read-only and PyInstaller ``_MEIPASS`` is a throwaway temp dir, so writing
+   read-only, PyInstaller ``_MEIPASS`` is a throwaway temp dir, and pip/AUR
+   installs place ``__file__`` inside root-owned site-packages, so writing
    next to the bundle would be lost or impossible; use ``~/.novelfetch``.
 4. ``dev_root`` -- the repo root during source/dev runs, so existing data in
-   ``novels/`` stays discoverable.
+   ``novels/`` stays discoverable.  Only passed when the caller detects a real
+   source checkout (``.git`` present).
+5. ``~/.novelfetch`` -- safe default for any other context.
 """
 
 import os
@@ -48,7 +51,7 @@ def data_dir(
         return android_user_data
     if is_appimage() or is_frozen():
         return _HOME_DATA_DIR
-    return dev_root or os.getcwd()
+    return dev_root or _HOME_DATA_DIR
 
 
 def ensure_data_dir(
