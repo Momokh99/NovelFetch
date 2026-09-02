@@ -148,6 +148,7 @@ make android-deploy   # deploy to connected device
 - [ ] Better text formatting (italics, line breaks, spacing)
 - [ ] Search filters (genre, status, rating)
 - [ ] Wire up the remaining preview read-progress styles (5 of 12 are preview-only)
+- [ ] Adding to AUR — blocked: AUR account registration disabled upstream; packages ready to push once sign-ups reopen
 
 ---
 
