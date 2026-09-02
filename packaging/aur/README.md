@@ -47,6 +47,11 @@ from [extra].
 
 ## Publishing
 
+### TODO
+
+- [ ] **Adding to AUR** — blocked: AUR account registration is disabled
+      upstream; packages ready to push once sign-ups reopen.
+
 You need an AUR account with an SSH key registered (separate from GitHub).
 Create a repo on AUR for each package (`python-deep-translator` first, since
 `novelfetch` depends on it), then:
