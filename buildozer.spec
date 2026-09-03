@@ -46,7 +46,7 @@ source.exclude_dirs = tests, bin, android_env, .git, .buildozer, .venv, tui, nov
 #source.exclude_patterns = license,images/*/*.jpg
 
 # (str) Application versioning (method 1)
-version = 2.0.5
+version = 2.0.6
 # (str) Application versioning (method 2)
 # version.regex = __version__ = '['"]{1}([\d.]+)['"]{1}
 # version.filename = %(source.dir)s/main.py
@@ -61,7 +61,11 @@ version = 2.0.5
 # typing_extensions is a hard dependency of beautifulsoup4 4.13+ (bs4/_typing.py
 # does `from typing_extensions import ...`); omitting it crashes the app at
 # startup with "ModuleNotFoundError: No module named 'typing_extensions'".
-requirements = python3,kivy==2.3.1,kivymd==2.0.0,materialyoucolor>=3.0.3,materialshapes>=0.3,pillow,asynckivy,httpx,beautifulsoup4,typing_extensions,deep-translator,ebooklib==0.20,requests,idna,anyio,sniffio,certifi,charset-normalizer,arabic-reshaper,python-bidi
+# asyncgui is asynckivy's hard runtime dependency (asynckivy/__init__.py does
+# `from asyncgui import *`); KivyMD's app bar lazily imports asynckivy when a
+# hover/state-layer event fires, so missing asyncgui crashes the app a few
+# seconds after the home screen renders.
+requirements = python3,kivy==2.3.1,kivymd==2.0.0,materialyoucolor>=3.0.3,materialshapes>=0.3,pillow,asynckivy,asyncgui,httpx,beautifulsoup4,typing_extensions,deep-translator,ebooklib==0.20,requests,idna,anyio,sniffio,certifi,charset-normalizer,arabic-reshaper,python-bidi
 
 # (str) Custom source folders for requirements
 # (Sets custom source for any requirements with recipes)
