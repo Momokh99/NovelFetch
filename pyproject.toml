@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "novelfetch"
-version = "2.0.3"
+version = "2.0.4"
 description = "A novel fetching and reading application with TUI and Android (KivyMD) frontends"
 readme = "README.md"
 license = { file = "LICENSE" }
