@@ -58,7 +58,10 @@ version = 2.0.4
 # kivymd.app -> MDApp), so it must be bundled or the app crashes at startup
 # with "No module named 'materialyoucolor'". Also pull in the rest of KivyMD's
 # runtime deps (pillow, materialshapes, asynckivy) so nothing breaks lazily.
-requirements = python3,kivy==2.3.1,kivymd==2.0.0,materialyoucolor>=3.0.3,materialshapes>=0.3,pillow,asynckivy,httpx,beautifulsoup4,deep-translator,ebooklib==0.20,requests,idna,anyio,sniffio,certifi,charset-normalizer,arabic-reshaper,python-bidi
+# typing_extensions is a hard dependency of beautifulsoup4 4.13+ (bs4/_typing.py
+# does `from typing_extensions import ...`); omitting it crashes the app at
+# startup with "ModuleNotFoundError: No module named 'typing_extensions'".
+requirements = python3,kivy==2.3.1,kivymd==2.0.0,materialyoucolor>=3.0.3,materialshapes>=0.3,pillow,asynckivy,httpx,beautifulsoup4,typing_extensions,deep-translator,ebooklib==0.20,requests,idna,anyio,sniffio,certifi,charset-normalizer,arabic-reshaper,python-bidi
 
 # (str) Custom source folders for requirements
 # (Sets custom source for any requirements with recipes)

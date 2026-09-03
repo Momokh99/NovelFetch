@@ -286,21 +286,27 @@ jobs:
           python -m pip install --upgrade 'pip<26'
           pip install --upgrade buildozer cython==0.29.34
 
+      - name: Compute cache key
+        # Hash only buildozer.spec's cross-compile inputs (requirements, p4a
+        # commit, android SDK/NDK/arch) via packaging/release.py --cachekey,
+        # NOT the full spec which embeds the version. This keeps the ~3.4GB
+        # SDK/NDK/toolchain + ccache alive across release bumps, so each new
+        # tag no longer forces a full re-download/re-compile.
+        id: cachekey
+        run: echo "key=$(python packaging/release.py --cachekey)" >> "$GITHUB_OUTPUT"
+
       - name: Cache buildozer global
         uses: actions/cache@v4
         with:
           path: ~/.buildozer
-          key: buildozer-${{ hashFiles('buildozer.spec') }}
-          # buildozer.spec embeds `version`, so a release bump changes the key;
-          # restore-keys lets the last SDK/NDK/toolchain cache survive the bump
-          # instead of forcing a ~3.4GB re-download.
+          key: buildozer-${{ steps.cachekey.outputs.key }}
           restore-keys: buildozer-
 
       - name: Cache ccache
         uses: actions/cache@v4
         with:
           path: ~/.cache/ccache
-          key: ccache-${{ hashFiles('buildozer.spec') }}
+          key: ccache-${{ steps.cachekey.outputs.key }}
           restore-keys: ccache-
 
       - name: Build APK (buildozer)

@@ -35,6 +35,45 @@ def _read_versions():
     return pyproject_m.group(1), buildozer_m.group(1)
 
 
+# buildozer.spec settings that, when changed, invalidate the cross-compile
+# toolchain/pip caches. `version` is deliberately EXCLUDED so a release bump
+# does not nuke the ~3.4GB SDK/NDK/toolchain + ccache on every run.
+_CACHEKEY_FIELDS = (
+    "requirements",
+    "p4a.commit",
+    "android.api",
+    "android.minapi",
+    "android.ndk",
+    "android.archs",
+    "android.permissions",
+)
+
+
+def _cachekey() -> str:
+    """Stable fingerprint of the native build inputs (not the version)."""
+    import hashlib
+
+    spec = BUILDOZER.read_text()
+    lines = spec.splitlines()
+    found = {}
+    for idx, line in enumerate(lines):
+        for field in _CACHEKEY_FIELDS:
+            if field in found:
+                continue
+            if line.strip().startswith(field + " "):
+                # Join wrapped continuation lines (indented) onto the value.
+                value = line.split("=", 1)[1].strip()
+                j = idx + 1
+                while j < len(lines) and lines[j].startswith((" ", "\t")):
+                    value += " " + lines[j].strip()
+                    j += 1
+                found[field] = value
+    hasher = hashlib.sha256()
+    for field in _CACHEKEY_FIELDS:
+        hasher.update(f"{field}={found.get(field)}\n".encode())
+    return hasher.hexdigest()[:16]
+
+
 def _check(args):
     pyver, bzver = _read_versions()
 
@@ -119,10 +158,18 @@ def main():
         metavar="X.Y.Z",
         help="rewrite versions in pyproject.toml and buildozer.spec",
     )
+    parser.add_argument(
+        "--cachekey",
+        action="store_true",
+        help="print a stable hash of buildozer.spec's cross-compile inputs "
+        "(excludes the version) for use as a CI cache key",
+    )
     args = parser.parse_args()
 
     if args.bump:
         _bump(args)
+    elif args.cachekey:
+        print(_cachekey())
     else:
         _check(args)
     return 0

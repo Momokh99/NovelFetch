@@ -19,27 +19,28 @@ def test_update_group_rows_by_day_ordered():
         {"slug": "b", "updated_ts": _midnight_ts(1)},
         {"slug": "c"},  # no timestamp
     ]
-    groups = t._group_rows(results)
-    # newest day first; untimestamped last
-    assert "Updated today" in groups[0][0]
+    groups = t._bucket(results)
+    # newest bucket first; untimestamped lands in "Older" last
+    labels = [b for b, _ in groups]
+    assert labels[0] == "Today"
+    assert labels[-1] == "Older"
     assert groups[-1][1][0]["slug"] == "c"
-    # today's group contains the today-timestamped slug
-    today_slugs = {r["slug"] for header, rows in groups if "today" in header
+    # today's bucket contains the today-timestamped slug
+    today_slugs = {r["slug"] for header, rows in groups if header == "Today"
                    for r in rows}
     assert "a" in today_slugs
 
 
 def test_update_day_label_today():
     t = UpdateTab.__new__(UpdateTab)
-    day = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
-    label = t._day_label(day)
-    assert "Updated today" in label
-    assert label.endswith(day.strftime("%m/%d/%Y"))
+    results = [{"slug": "a", "updated_ts": _midnight_ts(0)}]
+    groups = t._bucket(results)
+    assert groups == [("Today", results)]
 
 
 def test_update_group_rows_empty_groups_handled():
     t = UpdateTab.__new__(UpdateTab)
-    assert t._group_rows([]) == []
+    assert t._bucket([]) == []
 
 
 def test_history_bucket_ordering_and_members():
