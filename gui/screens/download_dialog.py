@@ -3,8 +3,8 @@ from kivymd.app import MDApp
 from kivymd.uix.label import MDLabel
 from kivymd.uix.screen import MDScreen
 
+from core.downloader import download as _download_novel
 from gui.async_runner import async_loop
-from gui.screens import utils
 from gui.screens.utils import _snack
 
 
@@ -68,7 +68,7 @@ class DownloadProgressScreen(MDScreen):
             return
 
         async def coro():
-            return await utils._download_novel(
+            return await _download_novel(
                 self.source, self.slug, self.chapters, self._title,
                 total=self._total, progress_cb=self._on_progress,
                 translate=self._translate, lang=self._lang)

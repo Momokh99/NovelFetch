@@ -27,15 +27,26 @@ from kivymd.uix.label import MDIcon, MDLabel
 from kivymd.uix.list import MDList, MDListItem, MDListItemHeadlineText
 from kivymd.uix.screen import MDScreen
 
+from core.downloader import download as _download_novel
+from core.library import (
+    delete_library as _delete_library,
+    display_title as _display_title,
+    has_chapters as _has_chapters,
+    is_tracked as _is_tracked,
+    library_entries_and_fingerprint as _library_entries_and_fingerprint,
+    local_chapters as _local_chapters,
+    read_meta as _read_meta,
+    save_cover as _save_cover,
+)
 from core.progress import LANGUAGES, progress
+from core.utils import _get_chapters, _get_source
 from gui.async_runner import async_loop
 from gui.screens import (
     theme,
-    utils,  # _get_source helper, meta
 )
 from gui.screens.app_settings import load_settings
 from gui.screens.source_picker import open_source_picker
-from gui.screens.utils import _snack
+from gui.screens.utils import _open_chapters_for, _snack
 
 _GRID_COLS = {"large": 1, "medium": 2, "small": 3}
 _CODE_TO_LABEL = {v: k for k, v in LANGUAGES.items()}
@@ -530,7 +541,7 @@ class HomeTab(MDScreen):
     def _count_label(self, novels):
         n_tracked = sum(
             1 for n in novels
-            if utils._is_tracked(n["slug"]) and not utils._has_chapters(n["slug"])
+            if _is_tracked(n["slug"]) and not _has_chapters(n["slug"])
         )
         return MDLabel(
             text=_count_summary(len(novels), n_tracked),
@@ -605,7 +616,7 @@ class HomeTab(MDScreen):
 
     def _continue_card(self, n, width=dp(150), cover_frac=1.0, cols=0):
         slug = n["slug"]
-        meta = utils._read_meta(slug)
+        meta = _read_meta(slug)
         title = meta.get("title") or n["title"]
         last = progress.get_last(slug)
         count = meta.get("chapters") or n["count"]
@@ -659,11 +670,11 @@ class HomeTab(MDScreen):
         read online fall back to a cached online chapter list (the reader
         loads whichever is available: translated → English → network). The
         chapter list opens only when nothing usable is found."""
-        chapters = utils._local_chapters(slug)
+        chapters = _local_chapters(slug)
         if chapters and last is not None and 0 <= last < len(chapters):
             self._goto_reader(slug, title, chapters, last)
             return
-        source = utils._get_source(slug)
+        source = _get_source(slug)
         if source is None or getattr(source, "blocked", False):
             self._open_library_novel(slug, title, cover)
             return
@@ -671,7 +682,7 @@ class HomeTab(MDScreen):
 
         async def coro():
             try:
-                return await utils._get_chapters(source, raw)
+                return await _get_chapters(source, raw)
             except Exception:
                 return None
 
@@ -692,7 +703,7 @@ class HomeTab(MDScreen):
             "reader",
             chapters=chapters,
             slug=slug,
-            source=utils._get_source(slug),
+            source=_get_source(slug),
             title=title or slug,
             start=start,
         )
@@ -703,7 +714,7 @@ class HomeTab(MDScreen):
         column so grid tiles stack reliably at any screen size."""
         slug = n["slug"]
         if meta is None:
-            meta = utils._read_meta(slug)
+            meta = _read_meta(slug)
         cover = os.path.join("novels", slug, meta["cover"]) if meta.get("cover") else ""
         count = meta.get("chapters") or n["count"]
         last = progress.get_last(slug)
@@ -727,7 +738,7 @@ class HomeTab(MDScreen):
         """Bare-cover grid tile: cover with centered title below (no elevation,
         no card box — the Mihon comfortable-grid look)."""
         slug = n["slug"]
-        meta = utils._read_meta(slug)
+        meta = _read_meta(slug)
         title = meta.get("title") or n["title"]
         cover = os.path.join("novels", slug, meta["cover"]) if meta.get("cover") else ""
 
@@ -757,13 +768,13 @@ class HomeTab(MDScreen):
 
     def _row_card(self, n, compact=False, badge=False):
         slug = n["slug"]
-        meta = utils._read_meta(slug)
+        meta = _read_meta(slug)
         title = meta.get("title") or n["title"]
         last = progress.get_last(slug)
-        # Reuse the already-fetched meta instead of utils._is_tracked(slug),
+        # Reuse the already-fetched meta instead of _is_tracked(slug),
         # which would re-read meta.json from disk.
         tracked_only = ((bool(meta.get("tracked")) or progress.is_tracked(slug))
-                        and not utils._has_chapters(slug))
+                        and not _has_chapters(slug))
 
         if tracked_only:
             sub = "Tracked · download to start"
@@ -806,7 +817,7 @@ class HomeTab(MDScreen):
             font_style="Label", role="large", size_hint_y=None, height="20dp",
             valign="top"))
 
-        source = utils._get_source(slug)
+        source = _get_source(slug)
         if source is not None and not tracked_only:
             if badge:
                 source_label = MDLabel(
@@ -908,12 +919,12 @@ class HomeTab(MDScreen):
     def _open_library_novel(self, slug, title, cover):
         # Tap a library row -> the chapter list. Online chapters when
         # reachable (cached for speed); downloaded files as an offline fallback.
-        source = utils._get_source(slug)
+        source = _get_source(slug)
         raw_slug = slug.split(":", 1)[-1] if ":" in slug else slug
-        utils._open_chapters_for(
+        _open_chapters_for(
             {"slug": raw_slug, "title": title or slug, "cover": cover},
             source,
-            fallback=utils._local_chapters(slug),
+            fallback=_local_chapters(slug),
         )
 
     # ---------- selection mode ----------
@@ -1030,13 +1041,13 @@ class HomeTab(MDScreen):
         dialog.dismiss()
         slugs = sorted(self._selected)
         for slug in slugs:
-            utils._delete_library(slug)
+            _delete_library(slug)
         self._exit_select()
         self.refresh_library(force=True)
 
     def _batch_mark_read(self):
         for slug, entry in self._selected_entries():
-            count = utils._read_meta(slug).get("chapters") or entry.get("count") or 0
+            count = _read_meta(slug).get("chapters") or entry.get("count") or 0
             if count > 0:
                 progress.mark_seen(slug, count - 1)
         self._after_progress_action()
@@ -1048,7 +1059,7 @@ class HomeTab(MDScreen):
 
     def _batch_track(self):
         for slug, entry in self._selected_entries():
-            title = (utils._read_meta(slug).get("title")
+            title = (_read_meta(slug).get("title")
                      or entry.get("title") or slug)
             progress.track(slug, title)
         self._after_progress_action()
@@ -1120,19 +1131,19 @@ class HomeTab(MDScreen):
 
             async def one(slug):
                 async with sem:
-                    source = utils._get_source(slug)
+                    source = _get_source(slug)
                     if source is None or getattr(source, "blocked", False):
                         return None
                     raw = slug.split(":", 1)[-1] if ":" in slug else slug
                     try:
-                        chapters = await utils._get_chapters(source, raw)
+                        chapters = await _get_chapters(source, raw)
                     except Exception:
                         return None
                     if not chapters:
                         return None
                     entry = by_slug.get(slug, {})
                     title = (entry.get("title")
-                             or utils._display_title(slug, slug))
+                             or _display_title(slug, slug))
                     return {"slug": slug, "title": title, "source": source,
                             "chapters": chapters, "total": len(chapters)}
 
@@ -1181,7 +1192,7 @@ class HomeTab(MDScreen):
         self.ids.batch_step.text = (
             f"Download · {self._batch_index + 1}/{len(self._batch_descriptors)}")
         self.ids.batch_title.text = desc["title"]
-        local = len(utils._local_chapters(desc["slug"]))
+        local = len(_local_chapters(desc["slug"]))
         seen = progress.get_seen(desc["slug"])
         unread = [ch for i, ch in enumerate(desc["chapters"])
                   if i not in seen and i >= local]
@@ -1241,7 +1252,7 @@ class HomeTab(MDScreen):
         self._set_panel_state("progress")
 
         async def coro():
-            return await utils._download_novel(
+            return await _download_novel(
                 desc["source"], desc["slug"], subset, desc["title"],
                 total=desc["total"], progress_cb=self._on_batch_progress,
                 translate=translate, lang=self._batch_lang)

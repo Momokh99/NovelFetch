@@ -3,7 +3,7 @@ import asyncio
 import json
 import os
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from kivy.clock import Clock
 from kivy.metrics import dp
@@ -16,10 +16,23 @@ from kivymd.uix.fitimage import FitImage
 from kivymd.uix.label import MDLabel
 from kivymd.uix.screen import MDScreen
 
+from core.downloader import download as _download_novel
+from core.library import (
+    display_title as _display_title,
+    library_entries as _library_entries,
+    local_chapter_count as _local_chapter_count,
+    local_chapters as _local_chapters,
+    meta_lang as _meta_lang,
+    missing_chapters as _missing_chapters,
+    read_meta as _read_meta,
+    save_cover as _save_cover,
+    update_chapters_meta as _update_chapters_meta,
+)
+from core.utils import _get_chapters, _get_source
 from gui.async_runner import async_loop
-from gui.screens import theme, utils
+from gui.screens import theme
 from gui.screens.app_settings import load_settings
-from gui.screens.utils import _snack
+from gui.screens.utils import _open_chapters_for, _snack, _time_ago
 
 _PERSIST_FILE = "update_results.json"
 
@@ -33,14 +46,14 @@ def _reconcile(results):
     for r in results:
         slug = r.get("slug", "")
         total = r.get("total") or len(r.get("chapters", []))
-        local = utils._local_chapter_count(slug)
+        local = _local_chapter_count(slug)
         new = max(0, total - local)
         if new == 0:
             continue
         r["new"] = new
         lang = r.get("lang", "")
-        r["chapters"] = utils._missing_chapters(r.get("chapters", []), slug, lang)
-        r["title"] = utils._display_title(slug, r.get("title", ""))
+        r["chapters"] = _missing_chapters(r.get("chapters", []), slug, lang)
+        r["title"] = _display_title(slug, r.get("title", ""))
         out.append(r)
     return out
 
@@ -117,22 +130,22 @@ class UpdateTab(MDScreen):
 
         async def coro():
             # Concurrent cover fetches (bounded) instead of one-by-one.
-            entries = list(utils._library_entries())
+            entries = list(_library_entries())
             sem = asyncio.Semaphore(4)
 
             async def cover_one(entry):
                 async with sem:
                     slug = entry["slug"]
-                    source = utils._get_source(slug)
+                    source = _get_source(slug)
                     if source is None or getattr(source, "blocked", False):
                         return (0, 1)
                     try:
-                        cover = await utils._save_cover(source, slug)
+                        cover = await _save_cover(source, slug)
                     except Exception:
                         return (0, 1)
                     if not cover:
                         return (0, 1)
-                    meta = dict(utils._read_meta(slug))
+                    meta = dict(_read_meta(slug))
                     meta.setdefault("title", entry["title"] or slug)
                     meta.setdefault("chapters", entry.get("count") or 0)
                     meta.setdefault("source", source.name)
@@ -188,7 +201,7 @@ class UpdateTab(MDScreen):
             total_failed = 0
             for i, res in enumerate(results, 1):
                 lang = res.get("lang", "")
-                saved, failed = await utils._download_novel(
+                saved, failed = await _download_novel(
                     res["source"], res["slug"], res["chapters"], res["title"],
                     total=res["total"],
                     translate=bool(lang), lang=lang)
@@ -231,40 +244,39 @@ class UpdateTab(MDScreen):
         async def coro():
             # Check every novel concurrently (bounded) — the fetch_chapters
             # round-trips no longer add up serially for a large library.
-            entries = list(utils._library_entries())
+            entries = list(_library_entries())
             sem = asyncio.Semaphore(4)
 
             async def check_one(n):
                 async with sem:
                     slug = n["slug"]
-                    source = utils._get_source(slug)
+                    source = _get_source(slug)
                     if source is None or getattr(source, "blocked", False):
                         return None
                     raw = slug.split(":", 1)[-1] if ":" in slug else slug
                     try:
-                        chapters = await utils._get_chapters(source, raw)
+                        chapters = await _get_chapters(source, raw)
                     except Exception:
                         return None
                     if not chapters:
                         return None
                     now = int(time.time())
                     online = len(chapters)
-                    stored = utils._read_meta(slug).get("chapters", 0)
+                    stored = _read_meta(slug).get("chapters", 0)
                     if online != stored:
-                        utils._update_chapters_meta(slug, online, now)
-                    lang = utils._meta_lang(slug) or ""
-                    pending = utils._missing_chapters(chapters, slug, lang)
-                    if not pending:
+                        _update_chapters_meta(slug, online, now)
+                    if online <= stored:
                         return None
+                    new_chapters = chapters[stored:]
                     return {
                         "slug": slug,
-                        "title": utils._display_title(slug, n["title"]),
-                        "new": len(pending),
-                        "chapters": pending,
+                        "title": _display_title(slug, n["title"]),
+                        "new": len(new_chapters),
+                        "chapters": new_chapters,
                         "source": source,
                         "total": online,
                         "updated_ts": now,
-                        "lang": lang,
+                        "lang": _meta_lang(slug) or "",
                     }
 
             results = await asyncio.gather(*(check_one(n) for n in entries))
@@ -300,12 +312,12 @@ class UpdateTab(MDScreen):
         self.empty_box.opacity = 0
         self.empty_box.height = 0
         max_ts = max((r.get("updated_ts") or 0 for r in results), default=0)
-        ago = utils._time_ago(max_ts)
+        ago = _time_ago(max_ts)
         self.info_label.text = (
             f"{len(results)} novel(s) with new chapters"
             + (f" · Last updated {ago}" if ago else ""))
         first = True
-        for header, group in self._group_rows(results):
+        for header, group in self._bucket(results):
             if not first:
                 self.list_view.add_widget(_gap_spacer())
             first = False
@@ -314,37 +326,32 @@ class UpdateTab(MDScreen):
             for r in group:
                 self.list_view.add_widget(self._make_row(r))
 
-    def _group_rows(self, results):
-        """Group update rows by the day their updates were discovered (the
-        'updated day'), newest first. Rows without a timestamp go last."""
-        groups = {}
-        for r in results:
+    @staticmethod
+    def _bucket(results):
+        now = datetime.now()
+        today = now.replace(hour=0, minute=0, second=0, microsecond=0)
+        yesterday = today - timedelta(days=1)
+        week_start = today - timedelta(days=today.weekday())
+
+        def bucket_for(r):
             ts = r.get("updated_ts", 0)
             if not ts:
-                day = None
-            else:
-                day = datetime.fromtimestamp(ts)
-                day = day.replace(hour=0, minute=0, second=0, microsecond=0)
-            groups.setdefault(day, []).append(r)
-        ordered = sorted(
-            groups.items(), key=lambda kv: (kv[0] is not None, kv[0] or 0),
-            reverse=True)
-        out = []
-        for day, rows in ordered:
-            out.append((self._day_label(day), rows))
-        return out
+                return "Older"
+            dt = datetime.fromtimestamp(ts).replace(
+                hour=0, minute=0, second=0, microsecond=0)
+            if dt >= today:
+                return "Today"
+            if dt >= yesterday:
+                return "Yesterday"
+            if dt >= week_start:
+                return "This week"
+            return "Older"
 
-    def _day_label(self, day):
-        if day is None:
-            return "Unknown"
-        today = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
-        delta = (today - day).days
-        label = day.strftime("%m/%d/%Y")
-        if delta == 0:
-            return f"Updated today · {label}"
-        if delta == 1:
-            return f"Updated yesterday · {label}"
-        return f"Updated {delta}d ago · {label}"
+        order = ["Today", "Yesterday", "This week", "Older"]
+        buckets = {b: [] for b in order}
+        for r in results:
+            buckets[bucket_for(r)].append(r)
+        return [(b, buckets[b]) for b in order if buckets[b]]
 
     @staticmethod
     def _make_header(text):
@@ -364,7 +371,7 @@ class UpdateTab(MDScreen):
             height=dp(76),
             padding=theme.CARD_PAD, spacing=theme.CARD_GAP,
         )
-        cover = utils._read_meta(res["slug"]).get("cover", "")
+        cover = _read_meta(res["slug"]).get("cover", "")
         if cover:
             cover_box = MDBoxLayout(
                 size_hint=(None, 1), width=dp(48),
@@ -396,17 +403,17 @@ class UpdateTab(MDScreen):
         return row
 
     def _open(self, res):
-        source = res.get("source") or utils._get_source(res["slug"])
-        utils._open_chapters_for(
+        source = res.get("source") or _get_source(res["slug"])
+        _open_chapters_for(
             {"slug": res["slug"].split(":", 1)[-1], "title": res["title"], "cover": ""},
             source,
-            fallback=utils._local_chapters(res["slug"]),
+            fallback=_local_chapters(res["slug"]),
         )
 
     def _update(self, res):
         if not res.get("chapters"):
             return
-        source = res.get("source") or utils._get_source(res["slug"])
+        source = res.get("source") or _get_source(res["slug"])
         lang = res.get("lang", "")
         MDApp.get_running_app().goto(
             "download_progress",

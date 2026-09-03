@@ -119,8 +119,7 @@ class HistoryTab(MDScreen):
         utils._snack("History cleared")
 
     def _title_for(self, slug, titles):
-        meta = utils._read_meta(slug)
-        return meta.get("title") or titles.get(slug, slug.split(":", 1)[-1])
+        return utils._display_title(slug, titles.get(slug, slug.split(":", 1)[-1]))
 
     def _make_row(self, slug, title, h):
         row = MDCard(
