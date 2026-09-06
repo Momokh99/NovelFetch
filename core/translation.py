@@ -1,11 +1,26 @@
 import re
 import time
 from concurrent.futures import ThreadPoolExecutor
-from this import d
 
 from deep_translator import GoogleTranslator
 
-_translate_pool = ThreadPoolExecutor(max_workers=5)
+# Lazy-initialized: only created when translation is actually used.
+_translate_pool: ThreadPoolExecutor | None = None
+
+
+def _get_translate_pool() -> ThreadPoolExecutor:
+    global _translate_pool
+    if _translate_pool is None:
+        _translate_pool = ThreadPoolExecutor(max_workers=5)
+    return _translate_pool
+
+
+def shutdown_translate_pool():
+    """Shut down the translation thread pool (call from App.on_stop)."""
+    global _translate_pool
+    if _translate_pool is not None:
+        _translate_pool.shutdown(wait=False)
+        _translate_pool = None
 
 
 def _chunk_text(text, maxlen=4800):
@@ -67,7 +82,7 @@ def _translate_text(text, target):
     chunks = _chunk_text(text)
     if len(chunks) == 1:
         return _safe_translate(translator, text)
-    translated = list(_translate_pool.map(
+    translated = list(_get_translate_pool().map(
         lambda c: _safe_translate(translator, c), chunks))
     if any(t is None for t in translated):
         return None

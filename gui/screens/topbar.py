@@ -68,4 +68,4 @@ class TopBar(MDBoxLayout):
             self.ids.actions_box.add_widget(btn)
 
 
-Factory.register("TopBar", cls=TopBar, module="screens.topbar")
+Factory.register("TopBar", cls=TopBar, module="gui.screens.topbar")

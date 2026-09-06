@@ -10,6 +10,7 @@ from kivymd.app import MDApp
 from kivymd.uix.button import MDIconButton
 from kivymd.uix.snackbar import MDSnackbar, MDSnackbarText
 
+from core.http_client import get_client
 from core.progress import LANGUAGES, PROGRESS_FILE
 from core.utils import _get_chapters, _get_source
 from gui.async_runner import async_loop
@@ -393,15 +394,32 @@ _shared_http_client = None
 # URL share one request instead of each firing its own.  Created lazily by
 # _download_cover, so it stays safe across async_loop restarts.
 _COVER_INFLIGHT: dict[str, "asyncio.Future[str]"] = {}
-_COVER_LOCK = asyncio.Lock()
+_COVER_LOCK: asyncio.Lock | None = None
+
+
+def _get_cover_lock() -> asyncio.Lock:
+    """Return an asyncio.Lock bound to the *current* running loop.
+
+    Module-level ``asyncio.Lock()`` binds to whatever loop exists at import
+    time.  When the async_loop restarts (e.g. after Android backgrounding),
+    the old lock belongs to a dead loop and raises ``RuntimeError``.  This
+    helper creates a fresh lock when the loop changes.
+    """
+    global _COVER_LOCK
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        loop = None
+    if _COVER_LOCK is None or (loop is not None and _COVER_LOCK._loop is not loop):
+        _COVER_LOCK = asyncio.Lock()
+    return _COVER_LOCK
 
 
 def _get_http_client():
-    """Shared httpx.AsyncClient with a 30s timeout (created once)."""
+    """Shared httpx.AsyncClient with Android-aware SSL (created once)."""
     global _shared_http_client
     if _shared_http_client is None:
-        import httpx
-        _shared_http_client = httpx.AsyncClient(follow_redirects=True, timeout=30)
+        _shared_http_client = get_client()
     return _shared_http_client
 
 
@@ -434,8 +452,9 @@ async def _download_cover(url):
     path = _cover_cache_path(url)
     if not path or os.path.exists(path):
         return path
+    cover_lock = _get_cover_lock()
     waiter = None
-    async with _COVER_LOCK:
+    async with cover_lock:
         if os.path.exists(path):
             # A prior waiter finished while we waited on the lock.
             return path
@@ -563,11 +582,20 @@ async def _download_novel(source, qualified_slug, chapters, title,
                                     f.write(translated)
                                 saved += 1
                     else:
-                        if await source.save_chapter(ch["url"], ch["title"],
-                                                     qualified_slug):
-                            saved += 1
-                        else:
+                        # source.save_chapter does not exist; fetch via
+                        # read_chapter (same as the translate path) and
+                        # write the chapter file ourselves.
+                        lines = await source.read_chapter(ch["url"])
+                        if not lines:
                             failed += 1
+                        else:
+                            text = "\n\n".join(lines)
+                            os.makedirs(
+                                os.path.join("novels", qualified_slug),
+                                exist_ok=True)
+                            with open(path, "w", encoding="utf-8") as f:
+                                f.write(text)
+                            saved += 1
                 except Exception:
                     failed += 1
         done += 1

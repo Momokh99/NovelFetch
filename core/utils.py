@@ -6,6 +6,7 @@ so they live here in core as the single source of truth.
 """
 
 import time
+from collections import OrderedDict
 
 from sources import REGISTRY
 
@@ -17,7 +18,12 @@ def _get_source(slug):
     return None
 
 
-_chapter_cache: dict[str, tuple[float, list[dict[str, object]]]] = {}
+# Bounded LRU cache: keeps at most _MAX_CACHE entries so memory stays
+# controlled on Android devices with limited RAM.
+_MAX_CACHE = 50
+_chapter_cache: OrderedDict[str, tuple[float, list[dict[str, object]]]] = (
+    OrderedDict()
+)
 
 
 async def _get_chapters(source, slug, ttl=300):
@@ -29,4 +35,7 @@ async def _get_chapters(source, slug, ttl=300):
         return cached[1]
     chapters = await source.fetch_chapters(slug)
     _chapter_cache[key] = (now, chapters)
+    # Evict oldest entries when the cache exceeds the limit.
+    while len(_chapter_cache) > _MAX_CACHE:
+        _chapter_cache.popitem(last=False)
     return chapters

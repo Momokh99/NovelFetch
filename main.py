@@ -45,6 +45,15 @@ def main():
         app = "gui" if is_android else "tui"
 
     if app == "gui":
+        # Set CWD BEFORE launching the GUI so that module-level imports
+        # (ProgressTracker, sources) see the correct data directory.
+        from core.paths import ensure_data_dir
+
+        here = os.path.dirname(os.path.abspath(__file__))
+        if os.path.isdir(os.path.join(here, ".git")):
+            ensure_data_dir(dev_root=here)
+        else:
+            ensure_data_dir()
         _run_gui()
     else:
         from core.paths import ensure_data_dir

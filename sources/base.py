@@ -33,9 +33,6 @@ class Source(ABC):
     async def read_chapter(self, url: str) -> Optional[list[str]]: ...
 
     @abstractmethod
-    async def save_chapter(self, url: str, title: str, slug: str) -> bool: ...
-
-    @abstractmethod
     async def cover_url(self, slug: str) -> str: ...
 
     @property

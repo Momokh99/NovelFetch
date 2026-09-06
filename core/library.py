@@ -21,6 +21,7 @@ import re
 import shutil
 from typing import Optional
 
+from core.http_client import get_client
 from core.progress import _is_translation_file
 
 NOVELS_DIR = "novels"
@@ -345,8 +346,12 @@ def write_chapter(slug, title, content, lang=None, base_dir=None):
     else:
         path = os.path.join(novels_dir, slug, f"{safe_title}.txt")
     os.makedirs(os.path.dirname(path), exist_ok=True)
-    with open(path, "w", encoding="utf-8") as f:
+    # Atomic write: write to a temp file then rename.  Prevents data
+    # corruption if the process is killed mid-write (Android ANR/OOM).
+    tmp = path + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
         f.write(content)
+    os.replace(tmp, path)
     return True
 
 
@@ -366,8 +371,7 @@ _async_http_client = None
 def _get_http_client():
     global _async_http_client
     if _async_http_client is None:
-        import httpx
-        _async_http_client = httpx.AsyncClient(follow_redirects=True, timeout=30)
+        _async_http_client = get_client()
     return _async_http_client
 
 

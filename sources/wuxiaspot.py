@@ -3,26 +3,17 @@ import os
 import urllib.parse
 from typing import Optional
 
-import httpx
 from bs4 import BeautifulSoup
 
+from core.http_client import get_client
 from sources.base import Source
-
-headers = {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
-    "Accept-Language": "en-US,en;q=0.5",}
 
 
 class WuxiaSpotSource(Source):
     search_supported = False
 
     def __init__(self):
-        self._client = httpx.AsyncClient(
-            headers=headers,
-            follow_redirects=True,
-            timeout=30,
-        )
+        self._client = get_client()
         self._cover_cache: dict[str, str] = {}
 
     @property
@@ -261,23 +252,6 @@ class WuxiaSpotSource(Source):
             return [p.strip() for p in text.split("\n") if p.strip()]
         except Exception:
             return None
-
-    async def save_chapter(self, url: str, title: str, slug: str) -> bool:
-        try:
-            safe_title = title.replace("/", "-").replace(" ", "_")
-            path = f"novels/{slug}/{safe_title}.txt"
-            if os.path.exists(path):
-                return False
-            os.makedirs(os.path.dirname(path), exist_ok=True)
-            content = await self.read_chapter(url)
-            if not content:
-                return False
-            with open(path, "w", encoding="utf-8") as f:
-                for p in content:
-                    f.write(p + "\n")
-            return True
-        except Exception:
-            return False
 
     async def cover_url(self, slug: str) -> str:
         try:

@@ -5,6 +5,7 @@ from typing import Optional
 
 from bs4 import BeautifulSoup
 
+from core.http_client import get_client_with_headers
 from sources.base import Source
 
 
@@ -33,10 +34,8 @@ class ScribbleHubSource(Source):
 
     def _get_httpx_client(self):
         if self._httpx_client is None:
-            import httpx
-            self._httpx_client = httpx.AsyncClient(
-                follow_redirects=True, timeout=30,
-                headers=ScribbleHubSource._headers)
+            self._httpx_client = get_client_with_headers(
+                ScribbleHubSource._headers)
         return self._httpx_client
 
     async def _fetch(self, url: str, data: Optional[dict] = None):
@@ -179,20 +178,6 @@ class ScribbleHubSource(Source):
         if not content:
             return None
         return [p.get_text(strip=True) for p in content.find_all("p")]
-
-    async def save_chapter(self, url: str, title: str, slug: str) -> bool:
-        safe_title = title.replace("/", "-").replace(" ", "_")
-        path = f"novels/{slug}/{safe_title}.txt"
-        if os.path.exists(path):
-            return False
-        os.makedirs(os.path.dirname(path), exist_ok=True)
-        content = await self.read_chapter(url)
-        if not content:
-            return False
-        with open(path, "w", encoding="utf-8") as f:
-            for p in content:
-                f.write(p + "\n")
-        return True
 
     async def cover_url(self, slug: str) -> str:
         url = f"https://www.scribblehub.com/series/{slug}/"

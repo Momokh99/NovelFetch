@@ -114,10 +114,20 @@ class NovelFetchApp(MDApp):
         progress.flush()
         return True
 
+    def on_resume(self):
+        """Restart the async loop if Android killed it while backgrounded."""
+        from gui.async_runner import async_loop
+
+        if not async_loop._thread.is_alive():
+            async_loop.start()
+
     def on_stop(self):
         from core.progress import progress
 
         progress.flush()
+        from core.translation import shutdown_translate_pool
+
+        shutdown_translate_pool()
         from gui.async_runner import async_loop
 
         async_loop.stop()

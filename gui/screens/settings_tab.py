@@ -293,21 +293,28 @@ class SettingsTab(MDScreen):
 
     def _do_clear(self, dialog):
         dialog.dismiss()
-        for novel in _scan_library():
-            slug = novel["slug"]
-            try:
-                shutil.rmtree(os.path.join("novels", slug))
-            except OSError:
-                pass
-            progress.remove(slug)
-        for tracked in progress.tracked_novels():
-            progress.untrack(tracked["slug"])
-        progress.flush()
-        self._refresh()
-        app = MDApp.get_running_app()
-        if hasattr(app.root, "homescreen_library_refresh"):
-            app.root.homescreen_library_refresh()
-        self._notify("Library cleared")
+        # Run the deletion on the async loop to avoid blocking the UI thread
+        # (ANR on Android with large libraries).
+        async def coro():
+            for novel in _scan_library():
+                slug = novel["slug"]
+                try:
+                    shutil.rmtree(os.path.join("novels", slug))
+                except OSError:
+                    pass
+                progress.remove(slug)
+            for tracked in progress.tracked_novels():
+                progress.untrack(tracked["slug"])
+            progress.flush()
+
+        def on_done(_result, error):
+            self._refresh()
+            app = MDApp.get_running_app()
+            if hasattr(app.root, "homescreen_library_refresh"):
+                app.root.homescreen_library_refresh()
+            self._notify("Library cleared")
+
+        async_loop.run(coro(), on_done)
 
     # ---------- helpers ----------
 

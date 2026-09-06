@@ -26,6 +26,15 @@ class AsyncLoop:
         self._loop.run_forever()             # pump pending coroutines forever
 
     def start(self):
+        """Start the background loop. Safe to call multiple times —
+        creates a fresh loop+thread if the previous one died (e.g. after
+        Android backgrounding kills daemon threads)."""
+        if self._thread.is_alive():
+            return
+        self._loop = asyncio.new_event_loop()
+        self._thread = threading.Thread(
+            target=self._run, name="async-loop", daemon=True
+        )
         self._thread.start()
 
     def stop(self):

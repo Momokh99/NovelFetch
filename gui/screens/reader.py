@@ -481,6 +481,9 @@ class ReaderScreen(MDScreen):
                     return list(color)
             except Exception:
                 pass
+            # Fallback: use white in dark mode, black in light mode.
+            if app.theme_cls.theme_style == "Dark":
+                return [1.0, 1.0, 1.0, 1.0]
         return [0.0, 0.0, 0.0, 1.0]
 
     def _make_chunk_label(self, text):

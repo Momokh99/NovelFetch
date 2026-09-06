@@ -4,6 +4,8 @@ import os
 import ebooklib
 from ebooklib import epub
 
+from core.http_client import get_client
+
 
 def _chapter_sort_key(fname):
     import re
@@ -29,11 +31,13 @@ async def _export_epub(slug, source=None, chapters=None):
         try:
             url = await source.cover_url(raw_slug)
             if url:
-                import httpx
-                async with httpx.AsyncClient() as c:
+                c = get_client()
+                try:
                     r = await c.get(url)
                     if r.status_code == 200:
                         cover_data = r.content
+                finally:
+                    await c.aclose()
         except Exception:
             pass
     book.add_author(author)
