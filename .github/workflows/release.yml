@@ -309,6 +309,13 @@ jobs:
           key: ccache-${{ steps.cachekey.outputs.key }}
           restore-keys: ccache-
 
+      - name: Cache p4a recipe sources
+        uses: actions/cache@v4
+        with:
+          path: .buildozer/android/platform/build-arm64-v8a/packages
+          key: p4a-pkg-${{ steps.cachekey.outputs.key }}
+          restore-keys: p4a-pkg-
+
       - name: Build APK (buildozer)
         # LT_SYS_SYMBOL_USCORE (used by p4a's libffi recipe) ships in
         # /usr/share/aclocal/ltdl.m4, provided by the libltdl-dev package.
