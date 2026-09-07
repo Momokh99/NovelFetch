@@ -15,7 +15,7 @@ class FreetypeRecipe(Recipe):
     """
 
     version = '2.14.1'
-    url = 'https://sourceforge.net/projects/freetype/files/freetype2/2.14.1/freetype-{version}.tar.gz/download'
+    url = 'https://downloads.sourceforge.net/project/freetype/freetype2/2.14.1/freetype-{version}.tar.gz'
     built_libraries = {'libfreetype.so': 'objs/.libs'}
 
     def get_recipe_env(self, arch=None, with_harfbuzz=False):

@@ -347,7 +347,8 @@ jobs:
             fi
             echo "::endgroup::"
             if [ "$attempt" -lt 3 ]; then
-              echo "Buildozer failed (attempt $attempt/3), retrying in 60s..."
+              echo "Buildozer failed (attempt $attempt/3), cleaning caches and retrying in 60s..."
+              rm -rf .buildozer/android/platform/build-arm64-v8a/packages/freetype/download
               sleep 60
             else
               echo "Buildozer failed after 3 attempts"
