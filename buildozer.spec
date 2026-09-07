@@ -29,6 +29,7 @@ source.dir = .
 # only stable for Python <= 3.12; the release tags align with the Python 3.14
 # hostpython this build targets, and avoid upstream pip-26 breakage.
 p4a.commit = v2026.05.09
+p4a.local_recipes = %(source.dir)s/p4a-recipes
 
 # (list) Source files to include (let empty to include all the files)
 source.include_exts = py,png,jpg,kv,atlas,gif,ttf
