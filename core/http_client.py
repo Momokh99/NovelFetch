@@ -17,9 +17,17 @@ import ssl
 from typing import Optional
 
 import httpx
-from kivy.utils import platform
 
-_ANDROID = platform == "android"
+
+def _is_android() -> bool:
+    try:
+        from kivy.utils import platform
+        return platform == "android"
+    except Exception:
+        return False
+
+
+_ANDROID = _is_android()
 
 _DEFAULT_HEADERS = {
     "User-Agent": (
