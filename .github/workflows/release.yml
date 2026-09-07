@@ -330,8 +330,8 @@ jobs:
           USE_CCACHE: '1'
         run: |
           printf 'pip<26\n' > /tmp/pip-constraints.txt
-          # Retry up to 3 times: p4a's pip install hits transient 502/504
-          # gateway errors from PyPI on GitHub-hosted runners.
+          # Retry up to 3 times: p4a's recipe download hits transient 502/504
+          # gateway errors from upstream CDNs on GitHub-hosted runners.
           for attempt in 1 2 3; do
             echo "::group::Build attempt $attempt"
             if yes | buildozer android debug; then
@@ -340,8 +340,8 @@ jobs:
             fi
             echo "::endgroup::"
             if [ "$attempt" -lt 3 ]; then
-              echo "Buildozer failed (attempt $attempt/3), retrying in 30s..."
-              sleep 30
+              echo "Buildozer failed (attempt $attempt/3), retrying in 60s..."
+              sleep 60
             else
               echo "Buildozer failed after 3 attempts"
               exit 1
