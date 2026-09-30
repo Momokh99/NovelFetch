@@ -1,23 +1,45 @@
 # pyright: reportGeneralTypeIssues=true
 import asyncio
+import contextlib
+import hashlib
 import json
 import os
 import re
 import shutil
 import time
 
+from kivy.metrics import dp
+from kivy.uix.image import AsyncImage
+from kivy.uix.relativelayout import RelativeLayout
 from kivymd.app import MDApp
+from kivymd.uix.boxlayout import MDBoxLayout
 from kivymd.uix.button import MDIconButton
+from kivymd.uix.card import MDCard
+from kivymd.uix.label import MDLabel
 from kivymd.uix.snackbar import MDSnackbar, MDSnackbarText
 
-from core.http_client import get_client
+from core.downloader import DOWNLOAD_CONCURRENCY
+from core.http_client import describe_error, get_client
+from core.library import (
+    update_chapters_meta as _lib_update_chapters_meta,
+)
+from core.library import (
+    write_last_updated as _lib_write_last_updated,
+)
 from core.progress import LANGUAGES, PROGRESS_FILE
-from core.utils import _get_chapters, _get_source
+
+# _get_chapters is used here; _get_source is re-exported on purpose —
+# chapter_list/history/novel_list call utils._get_source.  noqa stops
+# ruff's F401 autofix from dropping the re-export.
+from core.utils import _get_chapters, _get_source  # noqa: F401
 from gui.async_runner import async_loop
+from gui.screens.theme import CARD_GAP, CARD_PAD
+from gui.screens.theme import library_highlight as _library_highlight
 
 _LANG_CODES = set(LANGUAGES.values())
 _TRANSL_SUFFIX_RE = re.compile(r"^(.+)_([a-z]{2}(?:-[a-z]{2})?)\.txt$")
 _DIGIT_PREFIX_RE = re.compile(r"^\d+/")
+FETCH_TIMEOUT: int = 30  # default network timeout (seconds) for GUI async calls
 
 
 def _is_translation_file(fname):
@@ -30,6 +52,7 @@ def _is_translation_file(fname):
 
 def _snack(text):
     MDSnackbar(MDSnackbarText(text=text)).open()
+
 
 def _time_ago(timestamp):
     """'just now / 5m ago / 3h ago / 2d ago / 4w ago' from a unix timestamp."""
@@ -51,6 +74,41 @@ def _time_ago(timestamp):
     return f"{weeks}w ago"
 
 
+def _bucket_by_timestamp(items, key_fn):
+    """Bucket a list of items into Today/Yesterday/This week/Older groups.
+
+    key_fn(item) must return a Unix timestamp (int or float, 0 = unknown).
+    Returns [(label, [item, ...]), ...] for non-empty buckets in calendar order.
+    """
+    from datetime import datetime, timedelta
+
+    now = datetime.now()
+    today = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    yesterday = today - timedelta(days=1)
+    week_start = today - timedelta(days=today.weekday())
+
+    def _label(item):
+        ts = key_fn(item)
+        if not ts:
+            return "Older"
+        dt = datetime.fromtimestamp(ts).replace(
+            hour=0, minute=0, second=0, microsecond=0
+        )
+        if dt >= today:
+            return "Today"
+        if dt >= yesterday:
+            return "Yesterday"
+        if dt >= week_start:
+            return "This week"
+        return "Older"
+
+    order = ["Today", "Yesterday", "This week", "Older"]
+    buckets: dict[str, list] = {b: [] for b in order}
+    for item in items:
+        buckets[_label(item)].append(item)
+    return [(b, buckets[b]) for b in order if buckets[b]]
+
+
 def _read_last_updated(slug):
     """Unix timestamp of the last update check that found new chapters, or 0."""
     try:
@@ -61,27 +119,12 @@ def _read_last_updated(slug):
 
 def _write_last_updated(slug, ts):
     """Persist the last-updated timestamp into the novel's meta.json."""
-    try:
-        meta = dict(_read_meta(slug))
-        meta["last_updated"] = int(ts)
-        os.makedirs(os.path.join("novels", slug), exist_ok=True)
-        with open(os.path.join("novels", slug, "meta.json"), "w") as f:
-            json.dump(meta, f)
-    except OSError:
-        pass
+    _lib_write_last_updated(slug, ts)
 
 
 def _update_chapters_meta(slug, count, ts):
     """Update meta.json with the source's total chapter count and a timestamp."""
-    try:
-        meta = dict(_read_meta(slug))
-        meta["chapters"] = int(count)
-        meta["last_updated"] = int(ts)
-        os.makedirs(os.path.join("novels", slug), exist_ok=True)
-        with open(os.path.join("novels", slug, "meta.json"), "w") as f:
-            json.dump(meta, f)
-    except OSError:
-        pass
+    _lib_update_chapters_meta(slug, count, ts)
 
 
 def _chapter_sort_key(fname):
@@ -97,8 +140,11 @@ def _local_chapters(slug):
     chap_dir = os.path.join("novels", slug)
     if not os.path.isdir(chap_dir):
         return []
-    files = [f for f in os.listdir(chap_dir)
-             if f.endswith(".txt") and _is_translation_file(f) is None]
+    files = [
+        f
+        for f in os.listdir(chap_dir)
+        if f.endswith(".txt") and _is_translation_file(f) is None
+    ]
     files.sort(key=_chapter_sort_key)
     chapters = []
     for i, f in enumerate(files, 1):
@@ -125,7 +171,7 @@ def _local_chapter_count(slug):
             if tl is None:
                 bases.add(f)
             elif tl == lang:
-                bases.add(f[: -len("_%s.txt" % lang)] + ".txt")
+                bases.add(f[: -len(f"_{lang}.txt")] + ".txt")
     except OSError:
         return 0
     return len(bases)
@@ -136,6 +182,7 @@ def _delete_library(slug, untrack=False):
     default so the novel stays in the library (tracked-only) and can be
     re-downloaded; pass untrack=True for a full removal."""
     from core.progress import progress
+
     shutil.rmtree(os.path.join("novels", slug), ignore_errors=True)
     progress.remove(slug)
     if untrack:
@@ -170,8 +217,10 @@ def _has_chapters(slug):
     path = os.path.join("novels", slug)
     if not os.path.isdir(path):
         return False
-    return any(name.endswith(".txt") and _is_translation_file(name) is None
-               for name in os.listdir(path))
+    return any(
+        name.endswith(".txt") and _is_translation_file(name) is None
+        for name in os.listdir(path)
+    )
 
 
 def _missing_chapters(chapters, slug, lang):
@@ -209,22 +258,15 @@ def _is_tracked(slug):
     """True if a slug is registered as tracked, via meta.json or the
     tracking registry (which persists even after the folder is deleted)."""
     from core.progress import progress
+
     return bool(_read_meta(slug).get("tracked")) or progress.is_tracked(slug)
 
 
 def _library_entries():
-    """Every library novel: folders on disk plus tracked-but-deleted slugs.
+    """Every library novel: folders on disk plus tracked-but-deleted slugs."""
+    from core.library import library_entries
 
-    Each entry: {slug, title, count, tracked} — tracked slugs whose files are
-    gone still show up so the reader can re-add/update them."""
-    from core.progress import _scan_library, progress
-    entries = _scan_library()
-    seen = {n["slug"] for n in entries}
-    for t in progress.tracked_novels():
-        if t["slug"] not in seen:
-            entries.append({"slug": t["slug"], "title": t["title"], "count": 0})
-    entries.sort(key=lambda n: n["slug"])
-    return entries
+    return library_entries()
 
 
 def _library_sig_rows(entries):
@@ -246,11 +288,10 @@ def _library_sig_rows(entries):
         for f in files:
             if f != "meta.json" and not f.startswith("cover."):
                 continue
-            try:
-                top = max(top, round(os.path.getmtime(
-                    os.path.join(folder, f)), 6))
-            except OSError:
-                pass
+            # A file may vanish between listdir and stat; keep the last
+            # known mtime in that case.
+            with contextlib.suppress(OSError):
+                top = max(top, round(os.path.getmtime(os.path.join(folder, f)), 6))
         try:
             dir_mtime = round(os.stat(folder).st_mtime, 6)
         except OSError:
@@ -311,9 +352,79 @@ async def _track_novel(source, novel):
     # Tracking is also persisted in novels/tracking.json so it survives even
     # if the novels/{qualified} folder is later deleted.
     from core.progress import progress
+
     progress.track(qualified, meta["title"])
     progress.flush()
     return qualified
+
+
+def make_novel_card(novel, source, *, title_role="medium"):
+    """Shared novel result card used by NovelListScreen and SearchTab.
+
+    The caller is responsible for setting ``row.on_release`` after this returns.
+    """
+    row = MDCard(
+        orientation="horizontal",
+        size_hint_y=None,
+        height=dp(120),
+        padding=CARD_PAD,
+        spacing=CARD_GAP,
+    )
+    cover = novel.get("cover", "") or ""
+    img = AsyncImage(
+        source="",
+        size_hint=(None, 1),
+        width=dp(70),
+        keep_ratio=True,
+        allow_stretch=True,
+    )
+    if cover:
+        set_image_url(img, cover)
+
+    if source is not None and novel.get("slug"):
+        qualified = source.qualify_slug(novel["slug"])
+        if qualified and _read_meta(qualified):
+            row.md_bg_color = _library_highlight()
+
+    texts = MDBoxLayout(
+        orientation="vertical",
+        size_hint_y=None,
+        adaptive_height=True,
+        spacing="2dp",
+        pos_hint={"center_x": 0.5, "center_y": 0.5},
+    )
+    texts.add_widget(
+        MDLabel(
+            text=novel.get("title", ""),
+            bold=True,
+            font_style="Title",
+            role=title_role,
+            size_hint_y=None,
+            height="28dp",
+            shorten=True,
+            shorten_from="right",
+            max_lines=1,
+        )
+    )
+    sub = novel.get("author", "") or ""
+    if novel.get("latest"):
+        sub += f"  ·  {novel['latest']}"
+    texts.add_widget(
+        MDLabel(
+            text=sub,
+            theme_text_color="Secondary",
+            font_style="Label",
+            role="large",
+            size_hint_y=None,
+            height="22dp",
+        )
+    )
+    texts_rl = RelativeLayout(size_hint=(1, 1))
+    texts_rl.add_widget(texts)
+    row.add_widget(img)
+    row.add_widget(texts_rl)
+    row.add_widget(_add_to_library_icon(novel, source))
+    return row
 
 
 def _add_to_library_icon(novel, source):
@@ -351,7 +462,7 @@ def _add_flow(btn, novel, source):
     def on_done(result, error):
         btn.disabled = False
         if error is not None:
-            _snack("Could not add. Check your connection.")
+            _snack(describe_error(error, "Could not add"))
             return
         btn.icon = "bookmark"
         _snack("Added to library.")
@@ -361,7 +472,7 @@ def _add_flow(btn, novel, source):
             root.homescreen_library_refresh()
 
     btn.disabled = True
-    async_loop.run(coro(), on_done, timeout=30)
+    async_loop.run(coro(), on_done, timeout=FETCH_TIMEOUT)
 
 
 async def _save_cover(source, qualified_slug):
@@ -427,7 +538,6 @@ def _cover_cache_path(url):
     """Deterministic local path for a remote cover URL (no network here)."""
     if not url:
         return ""
-    import hashlib
     digest = hashlib.md5(url.encode("utf-8")).hexdigest()
     ext = url.split("?")[0].rsplit(".", 1)[-1].lower()
     if ext not in ("jpg", "jpeg", "png", "webp"):
@@ -485,9 +595,12 @@ async def _download_cover(url):
             os.replace(tmp, path)
     except Exception:
         result = ""
-    _COVER_INFLIGHT.pop(url, None)
-    if not fut.done():
-        fut.set_result(result)
+    finally:
+        # Always release the in-flight slot so future callers are not permanently
+        # blocked (e.g. when a CancelledError propagates through).
+        _COVER_INFLIGHT.pop(url, None)
+        if not fut.done():
+            fut.set_result(result)
     return result
 
 
@@ -506,6 +619,7 @@ def set_image_url(img, url):
 
     # Placeholder: opaque surface color while cover downloads.
     from gui.screens.theme import surface_color
+
     img.color = surface_color()
 
     async def coro():
@@ -517,15 +631,23 @@ def set_image_url(img, url):
             img.color = [1, 1, 1, 1]
             # Fade-in animation.
             from kivy.animation import Animation
+
             Animation(opacity=1, duration=0.3).start(img)
 
     async_loop.run(coro(), on_done)
 
 
-async def _download_novel(source, qualified_slug, chapters, title,
-                          total=None, progress_cb=None,
-                          translate=False, lang=""):
-    """Save every chapter via source.save_chapter (or read+translate when
+async def _download_novel(
+    source,
+    qualified_slug,
+    chapters,
+    title,
+    total=None,
+    progress_cb=None,
+    translate=False,
+    lang="",
+):
+    """Fetch every chapter via source.read_chapter (or read+translate when
     *translate* is True), download the cover, and write meta.json with the
     real title + cover file.
 
@@ -547,7 +669,8 @@ async def _download_novel(source, qualified_slug, chapters, title,
     necessarily the chapter order, but the counts are the same either way).
     """
     from core.translation import _translate_text
-    sem = asyncio.Semaphore(4)
+
+    sem = asyncio.Semaphore(DOWNLOAD_CONCURRENCY)
     saved = 0
     failed = 0
     done = 0
@@ -556,11 +679,9 @@ async def _download_novel(source, qualified_slug, chapters, title,
         nonlocal saved, failed, done
         safe_title = ch["title"].replace("/", "-").replace(" ", "_")
         if translate:
-            path = os.path.join("novels", qualified_slug,
-                                f"{safe_title}_{lang}.txt")
+            path = os.path.join("novels", qualified_slug, f"{safe_title}_{lang}.txt")
         else:
-            path = os.path.join("novels", qualified_slug,
-                                safe_title + ".txt")
+            path = os.path.join("novels", qualified_slug, safe_title + ".txt")
         if not os.path.exists(path):
             async with sem:
                 try:
@@ -571,13 +692,15 @@ async def _download_novel(source, qualified_slug, chapters, title,
                         else:
                             text = "\n\n".join(lines)
                             translated = await asyncio.to_thread(
-                                _translate_text, text, lang)
+                                _translate_text, text, lang
+                            )
                             if not translated:
                                 failed += 1
                             else:
                                 os.makedirs(
                                     os.path.join("novels", qualified_slug),
-                                    exist_ok=True)
+                                    exist_ok=True,
+                                )
                                 with open(path, "w", encoding="utf-8") as f:
                                     f.write(translated)
                                 saved += 1
@@ -591,8 +714,8 @@ async def _download_novel(source, qualified_slug, chapters, title,
                         else:
                             text = "\n\n".join(lines)
                             os.makedirs(
-                                os.path.join("novels", qualified_slug),
-                                exist_ok=True)
+                                os.path.join("novels", qualified_slug), exist_ok=True
+                            )
                             with open(path, "w", encoding="utf-8") as f:
                                 f.write(text)
                             saved += 1
@@ -608,8 +731,7 @@ async def _download_novel(source, qualified_slug, chapters, title,
 
     try:
         os.makedirs(os.path.join("novels", qualified_slug), exist_ok=True)
-        meta = {"title": title, "cover": cover_file,
-                "chapters": total or len(chapters)}
+        meta = {"title": title, "cover": cover_file, "chapters": total or len(chapters)}
         if translate and lang:
             meta["lang"] = lang
         # Merge with existing meta (preserves 'tracked' from _track_novel).
@@ -627,6 +749,7 @@ def _open_chapters_for(novel, source, set_loading=None, fallback=None):
     set_loading(bool) optionally toggles a busy state on the caller's view.
     fallback: local chapters to show if the online fetch fails or is empty
     (keeps downloaded novels openable offline)."""
+
     def _set(state):
         if set_loading:
             set_loading(state)
@@ -638,40 +761,47 @@ def _open_chapters_for(novel, source, set_loading=None, fallback=None):
 
     async def coro():
         cover = novel.get("cover", "") or ""
-        chapters = None
-        try:
-            if not cover:
+        if not cover:
+            # The cover is decoration — never let it fail the chapter fetch.
+            try:
                 cover = await source.cover_url(novel["slug"])
-            chapters = await _get_chapters(source, novel["slug"])
-        except Exception:
-            pass
-        if not chapters and fallback:
-            chapters = fallback
+            except Exception:
+                cover = ""
+        # Deliberately unguarded.  async_loop.run hands the exception to
+        # on_done as `error`, the only place where `fallback` and
+        # describe_error() are both visible — swallowing it here is what
+        # turned every failure into a bogus "No chapters found."
+        chapters = await _get_chapters(source, novel["slug"])
         return chapters, cover
 
     def on_done(result, error):
         _set(False)
-        if error is not None:
-            _snack("Failed to fetch chapters. Check your connection.")
-            return
-        chapters, cover = result
+        if result is None:
+            chapters, cover = None, novel.get("cover", "") or ""
+        else:
+            chapters, cover = result
+        if not chapters and fallback:
+            # Downloaded chapters open offline even when the fetch failed.
+            chapters = fallback
         if not chapters:
-            if getattr(source, "blocked", False):
+            if error is not None:
+                _snack(describe_error(error, "Failed to fetch chapters"))
+            elif getattr(source, "blocked", False):
                 _snack(f"{source.label} is blocked by anti-bot protection.")
             else:
                 _snack("No chapters found.")
-        else:
-            app = MDApp.get_running_app()
-            if app is None:
-                return
-            app.goto(
-                "chapter_list",
-                chapters=chapters,
-                slug=source.qualify_slug(novel["slug"]),
-                source=source,
-                title=novel["title"],
-                cover=cover,
-            )
+            return
+        app = MDApp.get_running_app()
+        if app is None:
+            return
+        app.goto(
+            "chapter_list",
+            chapters=chapters,
+            slug=source.qualify_slug(novel["slug"]),
+            source=source,
+            title=novel["title"],
+            cover=cover,
+        )
 
     _set(True)
-    async_loop.run(coro(), on_done, timeout=30)
+    async_loop.run(coro(), on_done, timeout=FETCH_TIMEOUT)

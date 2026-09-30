@@ -3,7 +3,6 @@ import asyncio
 import json
 import os
 import time
-from datetime import datetime, timedelta
 
 from kivy.clock import Clock
 from kivy.metrics import dp
@@ -16,23 +15,46 @@ from kivymd.uix.fitimage import FitImage
 from kivymd.uix.label import MDLabel
 from kivymd.uix.screen import MDScreen
 
+from core.downloader import DOWNLOAD_CONCURRENCY
 from core.downloader import download as _download_novel
+from core.http_client import describe_error
 from core.library import (
     display_title as _display_title,
+)
+from core.library import (
     library_entries as _library_entries,
+)
+from core.library import (
     local_chapter_count as _local_chapter_count,
+)
+from core.library import (
     local_chapters as _local_chapters,
+)
+from core.library import (
     meta_lang as _meta_lang,
+)
+from core.library import (
     missing_chapters as _missing_chapters,
+)
+from core.library import (
     read_meta as _read_meta,
+)
+from core.library import (
     save_cover as _save_cover,
+)
+from core.library import (
     update_chapters_meta as _update_chapters_meta,
 )
 from core.utils import _get_chapters, _get_source
 from gui.async_runner import async_loop
 from gui.screens import theme
 from gui.screens.app_settings import load_settings
-from gui.screens.utils import _open_chapters_for, _snack, _time_ago
+from gui.screens.utils import (
+    _bucket_by_timestamp,
+    _open_chapters_for,
+    _snack,
+    _time_ago,
+)
 
 _PERSIST_FILE = "update_results.json"
 
@@ -91,14 +113,17 @@ class UpdateTab(MDScreen):
         self._batch_busy = False
         self._auto_armed = False
         self._results = []
+        self._cover_busy: bool = False
 
         # Widget tree lives in kv/update.kv; alias the runtime-touched nodes.
         self.topbar = self.ids.topbar
-        self.topbar.set_actions([
-            ("refresh", self.refresh),
-            ("image-refresh", self.update_covers),
-            ("download-multiple", self.update_all),
-        ])
+        self.topbar.set_actions(
+            [
+                ("refresh", self.refresh),
+                ("image-refresh", self.update_covers),
+                ("download-multiple", self.update_all),
+            ]
+        )
         self.info_label = self.ids.info_label
         self.empty_box = self.ids.empty_box
         self.empty_label = self.ids.empty_label
@@ -131,7 +156,7 @@ class UpdateTab(MDScreen):
         async def coro():
             # Concurrent cover fetches (bounded) instead of one-by-one.
             entries = list(_library_entries())
-            sem = asyncio.Semaphore(4)
+            sem = asyncio.Semaphore(DOWNLOAD_CONCURRENCY)
 
             async def cover_one(entry):
                 async with sem:
@@ -153,15 +178,13 @@ class UpdateTab(MDScreen):
                     meta["tracked"] = True
                     try:
                         os.makedirs(os.path.join("novels", slug), exist_ok=True)
-                        with open(os.path.join("novels", slug, "meta.json"),
-                                  "w") as f:
+                        with open(os.path.join("novels", slug, "meta.json"), "w") as f:
                             json.dump(meta, f)
                     except OSError:
                         return (0, 1)
                     return (1, 0)
 
-            results = await asyncio.gather(
-                *(cover_one(e) for e in entries))
+            results = await asyncio.gather(*(cover_one(e) for e in entries))
             updated = sum(r[0] for r in results)
             skipped = sum(r[1] for r in results)
             return updated, skipped
@@ -171,7 +194,7 @@ class UpdateTab(MDScreen):
             self.refresh()
             app = MDApp.get_running_app()
             if error is not None:
-                _snack("Update covers failed")
+                _snack(describe_error(error, "Update covers failed"))
                 return
             updated, skipped = result
             if hasattr(app.root, "homescreen_library_refresh"):
@@ -199,18 +222,25 @@ class UpdateTab(MDScreen):
         async def coro():
             total_saved = 0
             total_failed = 0
+            n_total = len(results)
             for i, res in enumerate(results, 1):
                 lang = res.get("lang", "")
                 saved, failed = await _download_novel(
-                    res["source"], res["slug"], res["chapters"], res["title"],
+                    res["source"],
+                    res["slug"],
+                    res["chapters"],
+                    res["title"],
                     total=res["total"],
-                    translate=bool(lang), lang=lang)
+                    translate=bool(lang),
+                    lang=lang,
+                )
                 total_saved += saved
                 total_failed += failed
-                i_ = i
-                n_ = len(results)
+                # `i` must be bound as a default arg: closing over the loop
+                # variable itself would make every callback report the last i.
                 Clock.schedule_once(
-                    lambda dt: self._set_batch_progress(i_, n_), 0)
+                    lambda dt, done=i: self._set_batch_progress(done, n_total), 0
+                )
             return total_saved, total_failed, len(results)
 
         def on_done(result, error):
@@ -221,11 +251,13 @@ class UpdateTab(MDScreen):
             if hasattr(app.root, "homescreen_library_refresh"):
                 app.root.homescreen_library_refresh()
             if error is not None:
-                _snack("Update download failed")
+                _snack(describe_error(error, "Update download failed"))
                 return
             saved, failed, total = result
-            _snack(f"Updated {total} novel(s): {saved} saved"
-                   + (f", {failed} failed" if failed else ""))
+            _snack(
+                f"Updated {total} novel(s): {saved} saved"
+                + (f", {failed} failed" if failed else "")
+            )
 
         async_loop.run(coro(), on_done, timeout=dl_timeout)
 
@@ -245,9 +277,12 @@ class UpdateTab(MDScreen):
             # Check every novel concurrently (bounded) — the fetch_chapters
             # round-trips no longer add up serially for a large library.
             entries = list(_library_entries())
-            sem = asyncio.Semaphore(4)
+            sem = asyncio.Semaphore(DOWNLOAD_CONCURRENCY)
+            errors = []
+            checked = 0
 
             async def check_one(n):
+                nonlocal checked
                 async with sem:
                     slug = n["slug"]
                     source = _get_source(slug)
@@ -256,8 +291,10 @@ class UpdateTab(MDScreen):
                     raw = slug.split(":", 1)[-1] if ":" in slug else slug
                     try:
                         chapters = await _get_chapters(source, raw)
-                    except Exception:
+                    except Exception as exc:
+                        errors.append(exc)
                         return None
+                    checked += 1
                     if not chapters:
                         return None
                     now = int(time.time())
@@ -280,15 +317,28 @@ class UpdateTab(MDScreen):
                     }
 
             results = await asyncio.gather(*(check_one(n) for n in entries))
-            return [r for r in results if r]
+            found = [r for r in results if r]
+            # An up-to-date novel also yields no row, so "nothing found" is
+            # only a failure when not a single novel could be fetched at all.
+            # Otherwise a lone 404 would mask a whole successful refresh.
+            fetch_error = errors[0] if (not found and not checked and errors) else None
+            return found, fetch_error
 
         async_loop.run(coro(), self._on_done)
 
-    def _on_done(self, results, error):
+    def _on_done(self, outcome, error):
         self._busy = False
+        results, fetch_error = outcome if outcome is not None else ([], None)
         if error is not None:
-            self._render(self._results)
-            self.info_label.text = "Update check failed — showing last results"
+            fetch_error = error
+        if fetch_error is not None:
+            # Don't re-render stale widgets; just show the error in the label.
+            # The list was already cleared in refresh(); existing buttons are gone.
+            self.info_label.text = describe_error(
+                fetch_error, "Update check failed"
+            ) + (" Showing last results." if self._results else "")
+            if self._results:
+                self._render(self._results)
             return
         self._results = results or []
         _save_persisted(self._results)
@@ -313,11 +363,13 @@ class UpdateTab(MDScreen):
         self.empty_box.height = 0
         max_ts = max((r.get("updated_ts") or 0 for r in results), default=0)
         ago = _time_ago(max_ts)
-        self.info_label.text = (
-            f"{len(results)} novel(s) with new chapters"
-            + (f" · Last updated {ago}" if ago else ""))
+        self.info_label.text = f"{len(results)} novel(s) with new chapters" + (
+            f" · Last updated {ago}" if ago else ""
+        )
         first = True
-        for header, group in self._bucket(results):
+        for header, group in _bucket_by_timestamp(
+            results, lambda r: r.get("updated_ts", 0)
+        ):
             if not first:
                 self.list_view.add_widget(_gap_spacer())
             first = False
@@ -327,41 +379,21 @@ class UpdateTab(MDScreen):
                 self.list_view.add_widget(self._make_row(r))
 
     @staticmethod
-    def _bucket(results):
-        now = datetime.now()
-        today = now.replace(hour=0, minute=0, second=0, microsecond=0)
-        yesterday = today - timedelta(days=1)
-        week_start = today - timedelta(days=today.weekday())
-
-        def bucket_for(r):
-            ts = r.get("updated_ts", 0)
-            if not ts:
-                return "Older"
-            dt = datetime.fromtimestamp(ts).replace(
-                hour=0, minute=0, second=0, microsecond=0)
-            if dt >= today:
-                return "Today"
-            if dt >= yesterday:
-                return "Yesterday"
-            if dt >= week_start:
-                return "This week"
-            return "Older"
-
-        order = ["Today", "Yesterday", "This week", "Older"]
-        buckets = {b: [] for b in order}
-        for r in results:
-            buckets[bucket_for(r)].append(r)
-        return [(b, buckets[b]) for b in order if buckets[b]]
-
-    @staticmethod
     def _make_header(text):
         box = MDBoxLayout(
-            orientation="vertical", adaptive_height=True,
-            padding=(dp(4), dp(2), dp(4), dp(10)))
-        box.add_widget(MDLabel(
-            text=text, bold=True,
-            theme_text_color="Secondary",
-            font_style="Label", role="large"))
+            orientation="vertical",
+            adaptive_height=True,
+            padding=(dp(4), dp(2), dp(4), dp(10)),
+        )
+        box.add_widget(
+            MDLabel(
+                text=text,
+                bold=True,
+                theme_text_color="Secondary",
+                font_style="Label",
+                role="large",
+            )
+        )
         return box
 
     def _make_row(self, res):
@@ -369,33 +401,64 @@ class UpdateTab(MDScreen):
             orientation="horizontal",
             size_hint_y=None,
             height=dp(76),
-            padding=theme.CARD_PAD, spacing=theme.CARD_GAP,
+            padding=theme.CARD_PAD,
+            spacing=theme.CARD_GAP,
         )
         cover = _read_meta(res["slug"]).get("cover", "")
         if cover:
             cover_box = MDBoxLayout(
-                size_hint=(None, 1), width=dp(48),
-                radius=[8, 8, 8, 8], md_bg_color=theme.surface_color(),
+                size_hint=(None, 1),
+                width=dp(48),
+                radius=theme.COVER_TAB_RADIUS,
+                md_bg_color=theme.surface_color(),
             )
-            cover_box.add_widget(FitImage(
-                source=os.path.join("novels", res["slug"], cover),
-                radius=[8, 8, 8, 8], size_hint=(1, 1)))
+            cover_box.add_widget(
+                FitImage(
+                    source=os.path.join("novels", res["slug"], cover),
+                    radius=theme.COVER_TAB_RADIUS,
+                    size_hint=(1, 1),
+                )
+            )
             row.add_widget(cover_box)
-        texts = MDBoxLayout(orientation="vertical", size_hint_y=None, height=dp(50), spacing="2dp",
-                            pos_hint={"center_x": 0.5, "center_y": 0.5})
-        texts.add_widget(MDLabel(
-            text=res["title"], bold=True,
-            font_style="Title", role="medium", size_hint_y=None, height="28dp",
-            shorten=True, shorten_from="right", max_lines=1))
-        texts.add_widget(MDLabel(
-            text=f"{res['new']} new chapter(s)", theme_text_color="Secondary",
-            font_style="Label", role="large", size_hint_y=None, height="20dp"))
+        texts = MDBoxLayout(
+            orientation="vertical",
+            size_hint_y=None,
+            height=dp(50),
+            spacing="2dp",
+            pos_hint={"center_x": 0.5, "center_y": 0.5},
+        )
+        texts.add_widget(
+            MDLabel(
+                text=res["title"],
+                bold=True,
+                font_style="Title",
+                role="medium",
+                size_hint_y=None,
+                height="28dp",
+                shorten=True,
+                shorten_from="right",
+                max_lines=1,
+            )
+        )
+        texts.add_widget(
+            MDLabel(
+                text=f"{res['new']} new chapter(s)",
+                theme_text_color="Secondary",
+                font_style="Label",
+                role="large",
+                size_hint_y=None,
+                height="20dp",
+            )
+        )
         texts_rl = RelativeLayout(size_hint=(1, 1))
         texts_rl.add_widget(texts)
         row.add_widget(texts_rl)
         # Center the action button vertically within the row.
-        btn = MDIconButton(icon="download", on_release=lambda *_, r=res: self._update(r),
-                           pos_hint={"center_x": 0.5, "center_y": 0.5})
+        btn = MDIconButton(
+            icon="download",
+            on_release=lambda *_, r=res: self._update(r),
+            pos_hint={"center_x": 0.5, "center_y": 0.5},
+        )
         btn_rl = RelativeLayout(size_hint=(None, 1), width=dp(48))
         btn_rl.add_widget(btn)
         row.add_widget(btn_rl)

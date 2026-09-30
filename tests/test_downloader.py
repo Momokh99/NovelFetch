@@ -1,8 +1,8 @@
 """Tests for core.downloader — the download orchestrator."""
+
 import asyncio
 import os
 import tempfile
-from unittest.mock import AsyncMock, MagicMock
 
 import core.library as lib
 from core.downloader import download
@@ -26,7 +26,14 @@ class FakeSource:
 
 
 def _make_chapters(n=3):
-    return [{"num": i + 1, "title": f"Chapter {i + 1}", "url": f"http://example.com/ch{i + 1}"} for i in range(n)]
+    return [
+        {
+            "num": i + 1,
+            "title": f"Chapter {i + 1}",
+            "url": f"http://example.com/ch{i + 1}",
+        }
+        for i in range(n)
+    ]
 
 
 def test_download_saves_chapters():
@@ -62,7 +69,9 @@ def test_download_with_translate():
         src = FakeSource()
         chapters = _make_chapters(1)
         saved, failed = asyncio.run(
-            download(src, "tr-novel", chapters, "TR", translate=True, lang="en", base_dir=d)
+            download(
+                src, "tr-novel", chapters, "TR", translate=True, lang="en", base_dir=d
+            )
         )
         assert saved + failed >= 0  # may fail if deep_translator missing
 
@@ -82,8 +91,10 @@ def test_download_skip_existing():
 def test_download_progress_callback():
     with tempfile.TemporaryDirectory() as d:
         calls = []
+
         def cb(done, saved):
             calls.append((done, saved))
+
         src = FakeSource()
         chapters = _make_chapters(2)
         asyncio.run(
@@ -97,8 +108,6 @@ def test_download_cover_url_stored_in_meta():
     with tempfile.TemporaryDirectory() as d:
         src = FakeSource(cover="http://example.com/my-cover.jpg")
         chapters = _make_chapters(1)
-        asyncio.run(
-            download(src, "cover-novel", chapters, "Cover", base_dir=d)
-        )
+        asyncio.run(download(src, "cover-novel", chapters, "Cover", base_dir=d))
         meta = lib.read_meta("cover-novel", base_dir=d)
         assert meta.get("cover") == "http://example.com/my-cover.jpg"

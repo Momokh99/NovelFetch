@@ -1,4 +1,5 @@
 import asyncio
+import contextlib
 import threading
 from concurrent.futures import CancelledError
 
@@ -22,8 +23,8 @@ class AsyncLoop:
         )
 
     def _run(self):
-        asyncio.set_event_loop(self._loop)   # claim this thread as the loop's thread
-        self._loop.run_forever()             # pump pending coroutines forever
+        asyncio.set_event_loop(self._loop)  # claim this thread as the loop's thread
+        self._loop.run_forever()  # pump pending coroutines forever
 
     def start(self):
         """Start the background loop. Safe to call multiple times —
@@ -60,6 +61,7 @@ class AsyncLoop:
             coro = asyncio.wait_for(coro, timeout=timeout)
         future = asyncio.run_coroutine_threadsafe(coro, self._loop)
         if on_done is not None:
+
             def _finalize(fut):
                 try:
                     result = fut.result()
@@ -73,15 +75,18 @@ class AsyncLoop:
                     result, error = None, exc
                 else:
                     error = None
+
                 # Clock.schedule_once is documented thread-safe: hop back to the
                 # Kivy thread so the callback can safely touch widgets. Guarded:
                 # an exception inside on_done must not kill this callback chain.
                 def _deliver(_dt):
-                    try:
+                    # An exception inside on_done must not kill this
+                    # callback chain (Kivy clock callback).
+                    with contextlib.suppress(Exception):
                         on_done(result, error)
-                    except Exception:
-                        pass
+
                 Clock.schedule_once(_deliver)
+
             future.add_done_callback(_finalize)  # runs inside the asyncio thread
         return future
 

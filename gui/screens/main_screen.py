@@ -27,7 +27,7 @@ class MainScreen(BoxLayout):
         super().__init__(orientation="vertical", **kwargs)
 
         self.manager = ScreenManager()
-        self._stack: list[str] = []   # navigation history; back() pops it
+        self._stack: list[str] = []  # navigation history; back() pops it
 
         tabs = Screen(name="tabs")
         tabs_shell = BoxLayout(orientation="vertical")
@@ -37,15 +37,15 @@ class MainScreen(BoxLayout):
         self.update_tab = UpdateTab()
         self.history_tab = HistoryTab()
 
-        self._nav_items = {}  # label text -> screen name
+        self._nav_items = {}  # MDNavigationItem -> screen name (object identity; immune to label renames)
 
         def _add_tab(content, name, label, icon):
             content.name = name
-            self._nav_items[label] = name
             self.tab_manager.add_widget(content)
             item = MDNavigationItem()
             item.add_widget(MDNavigationItemIcon(icon=icon))
             item.add_widget(MDNavigationItemLabel(text=label))
+            self._nav_items[item] = name
             self.nav.add_widget(item)
 
         _add_tab(self.home_tab, "home", "Home", "home")
@@ -74,8 +74,8 @@ class MainScreen(BoxLayout):
         self.add_widget(self.manager)
 
     def _on_switch_tabs(self, bar, item, item_icon, item_text):
-        if item_text in self._nav_items:
-            name = self._nav_items[item_text]
+        name = self._nav_items.get(item)
+        if name is not None:
             if name != "home" and self.tab_manager.current == "home":
                 # Leaving Home: close its modal states (select mode / batch).
                 self.home_tab._leave_home_ui()
@@ -91,7 +91,7 @@ class MainScreen(BoxLayout):
         if key == 27:  # ESC / Android back
             if self.manager.current != "tabs":
                 self.back()
-                return True   # consumed: stay in the app
+                return True  # consumed: stay in the app
             # On tabs: Home's modal states consume the key first.
             if self.tab_manager.current == "home":
                 if self.home_tab._batch_active:
@@ -100,7 +100,7 @@ class MainScreen(BoxLayout):
                 if self.home_tab._select_mode:
                     self.home_tab._exit_select()
                     return True
-            return False      # on tabs: let the default pause/exit run
+            return False  # on tabs: let the default pause/exit run
 
     def goto(self, name, **kwargs):
         """Switch to a screen by name, handing it data via load(**kwargs)."""
@@ -119,7 +119,7 @@ class MainScreen(BoxLayout):
 
     def back(self):
         """Pop back to the screen we came from (no reload, keeps scroll)."""
-        progress.flush()   # persist read marks on ANY exit (incl. OS/hardware back)
+        progress.flush()  # persist read marks on ANY exit (incl. OS/hardware back)
         target = self._stack.pop() if self._stack else "tabs"
         if target == "tabs":
             # Returning Home: re-scan so progress/downloads show immediately.

@@ -9,6 +9,7 @@ from textual.widgets import (
 )
 from textual.widgets.option_list import Option
 
+from core.http_client import describe_error
 from core.progress import progress
 from tui.download import DownloadDialog
 from tui.reader import ReaderScreen
@@ -90,8 +91,8 @@ class SearchScreen(Screen):
             self._results = novels
             self._total_pages = total_pages
             self._show_results(novels)
-        except Exception:
-            self.notify("Search failed. Check internet.", timeout=3)
+        except Exception as error:
+            self.notify(describe_error(error, "Search failed"), timeout=3)
         finally:
             self._fetch_lock = False
             inp.disabled = False
@@ -127,8 +128,8 @@ class SearchScreen(Screen):
                 )
             else:
                 self.notify("No chapters found.", timeout=3)
-        except Exception:
-            self.notify("Failed to fetch chapters. Check your connection.", timeout=3)
+        except Exception as error:
+            self.notify(describe_error(error, "Failed to fetch chapters"), timeout=3)
         finally:
             self.query_one(LoadingIndicator).set_class(False, "-visible")
             event.option_list.disabled = False
@@ -204,8 +205,8 @@ class NovelListScreen(Screen):
                 )
             else:
                 self.notify("No chapters found.", timeout=3)
-        except Exception:
-            self.notify("Failed to fetch chapters. Check your connection.", timeout=3)
+        except Exception as error:
+            self.notify(describe_error(error, "Failed to fetch chapters"), timeout=3)
         finally:
             self.query_one(LoadingIndicator).set_class(False, "-visible")
             event.option_list.disabled = False
@@ -303,8 +304,8 @@ class GenreScreen(Screen):
                 self.app.push_screen(NovelListScreen(novels, source=self.source))
             else:
                 self.notify("No results.", timeout=3)
-        except Exception:
-            self.notify("Failed to load genre. Check your connection.", timeout=3)
+        except Exception as error:
+            self.notify(describe_error(error, "Failed to load genre"), timeout=3)
         finally:
             self.query_one(LoadingIndicator).set_class(False, "-visible")
             event.option_list.disabled = False

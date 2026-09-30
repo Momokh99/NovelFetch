@@ -1,6 +1,5 @@
 """Tests for screens/history.py _time_ago (pure logic, no Kivy UI)."""
 
-import time
 from datetime import datetime
 
 from gui.screens.history import _time_ago

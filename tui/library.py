@@ -7,7 +7,10 @@ from textual.widgets import Footer, OptionList, Static
 from textual.widgets.option_list import Option
 
 from core.epub import _chapter_sort_key, _export_epub
-from core.progress import _scan_library, _slug_to_title, progress
+from core.http_client import describe_error
+from core.library import _slug_to_title
+from core.library import library_entries as _scan_library
+from core.progress import progress
 from tui.download import DownloadDialog
 from tui.reader import LocalReaderScreen
 from tui.shared import CustomHeader
@@ -181,8 +184,8 @@ class LocalChapterScreen(Screen):
             chapters = await _get_chapters(
                 source, self.slug.split(":", 1)[-1] if ":" in self.slug else self.slug
             )
-        except Exception:
-            self.notify("Failed to fetch chapters. Check network.", timeout=3)
+        except Exception as error:
+            self.notify(describe_error(error, "Failed to fetch chapters"), timeout=3)
             return
         if not chapters:
             self.notify("Could not fetch chapters.", timeout=3)

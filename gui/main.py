@@ -21,14 +21,17 @@ if _APP_DIR not in sys.path:
 if _ROOT not in sys.path:
     sys.path.append(_ROOT)
 
-from kivy.utils import platform
-from kivymd.app import MDApp
+# Everything below must import *after* the sys.path bootstrap above.
+from kivy.utils import platform  # noqa: E402
+from kivymd.app import MDApp  # noqa: E402
 
 # KivyMD 2.0: RectangularRippleBehavior.__init__ creates an FBO with
 # self.size before the widget is laid out (size 0x0), which crashes on
 # some desktop OpenGL drivers.  Patch it to defer until the widget has
 # a real size.
-from kivymd.uix.behaviors.ripple_behavior import RectangularRippleBehavior
+from kivymd.uix.behaviors.ripple_behavior import (  # noqa: E402
+    RectangularRippleBehavior,
+)
 
 _orig_init_fbos = RectangularRippleBehavior.init_fbos
 

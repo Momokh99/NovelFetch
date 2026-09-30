@@ -66,6 +66,10 @@ version = 2.0.7
 # `from asyncgui import *`); KivyMD's app bar lazily imports asynckivy when a
 # hover/state-layer event fires, so missing asyncgui crashes the app a few
 # seconds after the home screen renders.
+# lxml is deliberately omitted: it is bs4's faster tree builder, but bundling
+# it adds libxml2 + libxslt to the APK and the p4a recipe builds an old sdist.
+# core.http_client probes for lxml at import time and falls back to the
+# pure-Python html.parser, so the app works either way.
 requirements = python3,kivy==2.3.1,kivymd==2.0.0,materialyoucolor>=3.0.3,materialshapes>=0.3,pillow,asynckivy,asyncgui,httpx,beautifulsoup4,typing_extensions,deep-translator,ebooklib==0.20,requests,idna,anyio,sniffio,certifi,charset-normalizer,arabic-reshaper,python-bidi
 
 # (str) Custom source folders for requirements

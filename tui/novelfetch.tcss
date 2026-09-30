@@ -11,7 +11,10 @@ Screen {
     padding: 0 1;
 }
 .banner {
-    text-align: center;
+    text-align: left;
+    /* Center the whole art block, not each line: ASCII-art rows have
+       unequal widths, so per-line centering shifts the shorter rows. */
+    content-align: center middle;
     color: $accent;
     padding: 2 0 0 0;
 }

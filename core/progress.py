@@ -2,17 +2,20 @@
 # pyright: reportOptionalMemberAccess=true
 import json
 import os
-import re
 import threading
 import time
 
 PROGRESS_FILE = "novels/progress.json"
 TRACKING_FILE = "novels/tracking.json"
 
+
 class ProgressTracker:
     def __init__(self, path):
         self.path = path
-        self.tracking_path = TRACKING_FILE
+        # Derive tracking.json from the same directory as the progress file so
+        # a non-default path (e.g. on Android) doesn't point at the wrong location.
+        _dir = os.path.dirname(path) or os.path.dirname(TRACKING_FILE)
+        self.tracking_path = os.path.join(_dir, "tracking.json")
         self._lock = threading.Lock()
         self._data: dict = {}
         self._tracked: dict = {}
@@ -28,7 +31,9 @@ class ProgressTracker:
             data = {}
         for slug, val in list(data.items()):
             if isinstance(val, int):
-                data[slug] = {"last": val, "seen": [val]}
+                data[slug] = {"last": val, "seen": {val}}
+            elif isinstance(val, dict) and "seen" in val:
+                val["seen"] = set(val["seen"])
         self._data = data
         try:
             with open(self.tracking_path) as f:
@@ -43,7 +48,7 @@ class ProgressTracker:
         novels_dir = os.path.dirname(self.path)
         if not os.path.isdir(novels_dir):
             return
-        for root, dirs, files in os.walk(novels_dir):
+        for root, _dirs, files in os.walk(novels_dir):
             if "meta.json" not in files:
                 continue
             rel = os.path.relpath(root, novels_dir).replace(os.sep, "/")
@@ -60,11 +65,10 @@ class ProgressTracker:
 
     def mark_seen(self, slug, idx):
         with self._lock:
-            entry = self._data.get(slug, {"last": idx, "seen": []})
+            entry = self._data.get(slug, {"last": idx, "seen": set()})
             entry["last"] = idx
             entry["last_time"] = int(time.time())
-            if idx not in entry["seen"]:
-                entry["seen"].append(idx)
+            entry["seen"].add(idx)  # O(1) set add; no duplicate check needed
             self._data[slug] = entry
             self._dirty = True
 
@@ -154,8 +158,17 @@ class ProgressTracker:
             if self._dirty:
                 os.makedirs(os.path.dirname(self.path) or ".", exist_ok=True)
                 tmp = self.path + ".tmp"
+                # Convert internal sets back to sorted lists for JSON serialization.
+                serializable = {}
+                for slug, val in self._data.items():
+                    if isinstance(val, dict) and isinstance(val.get("seen"), set):
+                        v = dict(val)
+                        v["seen"] = sorted(v["seen"])
+                        serializable[slug] = v
+                    else:
+                        serializable[slug] = val
                 with open(tmp, "w") as f:
-                    json.dump(self._data, f, indent=2)
+                    json.dump(serializable, f, indent=2)
                 os.replace(tmp, self.path)
                 self._dirty = False
             if self._tracked_dirty:
@@ -166,42 +179,23 @@ class ProgressTracker:
                 os.replace(tmp, self.tracking_path)
                 self._tracked_dirty = False
 
+
 progress = ProgressTracker(PROGRESS_FILE)
 
 
 LANGUAGES = {
-    "Arabic": "ar", "Chinese": "zh-cn", "French": "fr", "German": "de",
-    "Hindi": "hi", "Italian": "it", "Japanese": "ja", "Korean": "ko",
-    "Portuguese": "pt", "Russian": "ru", "Spanish": "es", "Turkish": "tr",
+    "Arabic": "ar",
+    "Chinese": "zh-cn",
+    "French": "fr",
+    "German": "de",
+    "Hindi": "hi",
+    "Italian": "it",
+    "Japanese": "ja",
+    "Korean": "ko",
+    "Portuguese": "pt",
+    "Russian": "ru",
+    "Spanish": "es",
+    "Turkish": "tr",
 }
 
 _LANG_CODES = set(LANGUAGES.values())
-_TRANSL_SUFFIX = re.compile(r"^.+_([a-z]{2}(?:-[a-z]{2})?)\.txt$")
-
-
-def _is_translation_file(fname):
-    m = _TRANSL_SUFFIX.match(fname)
-    return m.group(1) if m and m.group(1) in _LANG_CODES else None
-
-
-def _scan_library():
-    novels_dir = "novels"
-    if not os.path.isdir(novels_dir):
-        return []
-    result = []
-    for root, dirs, files in os.walk(novels_dir):
-        if "meta.json" not in files:
-            continue
-        rel = os.path.relpath(root, novels_dir).replace(os.sep, "/")
-        count = sum(1 for f in files
-                    if f == "meta.json" or
-                    (f.endswith(".txt") and _is_translation_file(f) is None) or
-                    (not f.endswith(".txt") and not f.endswith(".tmp")))
-        result.append({"slug": rel, "title": _slug_to_title(rel), "count": count})
-    result.sort(key=lambda n: n["slug"])
-    return result
-
-
-def _slug_to_title(slug):
-    raw = slug.split(":", 1)[-1] if ":" in slug else slug
-    return raw.replace("-", " ").title()

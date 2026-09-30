@@ -1,4 +1,5 @@
 """Tests for core.library — the persistence store module."""
+
 import json
 import os
 import tempfile
@@ -27,7 +28,11 @@ def test_write_meta_creates_file():
 
 def test_read_meta_roundtrip():
     with tempfile.TemporaryDirectory() as d:
-        meta = {"title": "Roundtrip", "cover": "http://example.com/c.jpg", "tracked": True}
+        meta = {
+            "title": "Roundtrip",
+            "cover": "http://example.com/c.jpg",
+            "tracked": True,
+        }
         lib.write_meta("slug-r", meta, base_dir=d)
         loaded = lib.read_meta("slug-r", base_dir=d)
         assert loaded["title"] == "Roundtrip"
@@ -127,7 +132,10 @@ def test_display_title():
         lib.write_meta("dt", {"title": "My Novel"}, base_dir=d)
         assert lib.display_title("dt", "Fallback", base_dir=d) == "My Novel"
         # When no meta, display_title derives from slug (not the fallback arg)
-        assert lib.display_title("royalroad:12345/my-cool-novel", "Fallback", base_dir=d) == "My Cool Novel"
+        assert (
+            lib.display_title("royalroad:12345/my-cool-novel", "Fallback", base_dir=d)
+            == "My Cool Novel"
+        )
 
 
 def test_scan_library():
@@ -135,7 +143,7 @@ def test_scan_library():
         lib.write_chapter("s1", "A", "a", base_dir=d)
         lib.write_meta("s1", {"title": "S1", "source": "royalroad"}, base_dir=d)
         lib.write_chapter("s2", "B", "b", base_dir=d)
-        lib.write_meta("s2", {"title": "S2", "source": "scriblehub"}, base_dir=d)
+        lib.write_meta("s2", {"title": "S2", "source": "scribblehub"}, base_dir=d)
         entries = lib._scan_library(d)
         slugs = [e["slug"] for e in entries]
         assert "s1" in slugs
@@ -144,8 +152,62 @@ def test_scan_library():
 
 def test_is_translation_file():
     assert lib.is_translation_file("Ch1_fr.txt") == "fr"
-    assert lib.is_translation_file("Ch1_en.txt") == "en"
+    # multi-part picker codes must be recognised too
+    assert lib.is_translation_file("Chapter_1_zh-cn.txt") == "zh-cn"
+    # "en" is intentionally not a translation: English-source chapters are
+    # plain chapters and must be counted by the library scan.
+    assert lib.is_translation_file("Ch1_en.txt") is None
     assert lib.is_translation_file("Ch1.txt") is None
+    assert lib.is_translation_file("Ch1_xx.txt") is None
+    assert lib.is_translation_file("cover.jpg") is None
+    assert lib.is_translation_file("") is None
+
+
+def test_scan_library_counts(tmp_path):
+    d = tmp_path / "novels" / "rr:demo"
+    d.mkdir(parents=True)
+    (d / "meta.json").write_text('{"title": "Demo"}')
+    (d / "Ch_1.txt").write_text("x")
+    (d / "Ch_2.txt").write_text("x")
+    (d / "Ch_2_es.txt").write_text("translated")
+    (d / "cover.jpg").write_bytes(b"x")
+
+    entries = lib._scan_library(str(tmp_path))
+    assert len(entries) == 1
+    entry = entries[0]
+    assert entry["slug"] == "rr:demo"
+    # only plain chapters count: meta/cover and translations are excluded
+    assert entry["count"] == 2
+    assert entry["title"] == "Demo"
+
+
+def test_scan_library_multiple_novels(tmp_path):
+    novels = tmp_path / "novels"
+    for slug in ("rr:alpha", "rr:beta"):
+        d = novels / slug
+        d.mkdir(parents=True)
+        (d / "meta.json").write_text('{"title": "X"}')
+        (d / "Ch_1.txt").write_text("x")
+
+    entries = lib._scan_library(str(tmp_path))
+    assert len(entries) == 2
+    assert [e["slug"] for e in entries] == ["rr:alpha", "rr:beta"]
+    assert all(e["count"] == 1 for e in entries)  # one chapter each; meta not counted
+
+
+def test_scan_library_empty(tmp_path):
+    (tmp_path / "novels").mkdir()
+    assert lib._scan_library(str(tmp_path)) == []
+
+
+def test_scan_library_no_novels_dir(tmp_path):
+    assert lib._scan_library(str(tmp_path)) == []
+
+
+def test_slug_to_title():
+    assert lib._slug_to_title("my-novel") == "My Novel"
+    assert lib._slug_to_title("rr:the-beginning") == "The Beginning"
+    assert lib._slug_to_title("plain") == "Plain"
 
 
 def test_chapter_path():

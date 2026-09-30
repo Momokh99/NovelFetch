@@ -38,6 +38,7 @@ def _labels(widget):
 class _HomeApp(MDApp):
     def build(self):
         from gui.screens.home_tab import HomeTab
+
         return HomeTab()
 
 
@@ -48,29 +49,33 @@ def tab(tmp_path, monkeypatch):
     Builder.load_file(os.path.join(APP, "kv/topbar.kv"))
     Builder.load_file(os.path.join(APP, "kv/home_tab.kv"))
     import kivy
+
     app = _HomeApp()
     kivy.app.App._app_instance = app
     win = app.build()
     Window.add_widget(win)
     win.pos = (0, 0)
     win.size = Window.size
-    yield win
+    return win
 
 
 def _make_novel(slug, chapters, last=None, title=None, cover="cover.png"):
     os.makedirs(os.path.join("novels", slug), exist_ok=True)
     if cover:
-        open(os.path.join("novels", slug, cover), "wb").write(b"x")
+        with open(os.path.join("novels", slug, cover), "wb") as f:
+            f.write(b"x")
     meta = {"title": title or slug, "cover": cover, "chapters": chapters}
     with open(os.path.join("novels", slug, "meta.json"), "w") as f:
         json.dump(meta, f)
     if last is not None:
         from core.progress import progress
+
         progress.mark_seen(slug, last)
     return {"slug": slug, "title": title or slug, "count": chapters}
 
 
 # ---------- pure helpers ----------
+
 
 def test_unread_count_from_start():
     assert _unread_count(10, None) == 10
@@ -104,8 +109,10 @@ def test_badge_text_caps_at_999():
 
 # ---------- cover rendering path ----------
 
+
 def test_grid_card_draws_cover(tab):
     from gui.screens.home_tab import _FitCover
+
     novel = _make_novel("a:cover_g", chapters=4)
     card = tab._grid_card(novel, cols=2)
     cover = _find(card, _FitCover)
@@ -115,6 +122,7 @@ def test_grid_card_draws_cover(tab):
 
 def test_continue_card_draws_cover(tab):
     from gui.screens.home_tab import _FitCover
+
     novel = _make_novel("a:cover_c", chapters=4, last=1)
     card = tab._continue_card(novel)
     cover = _find(card, _FitCover)
@@ -126,6 +134,7 @@ def test_grid_cover_has_direct_cover_child(tab):
     from kivy.uix.floatlayout import FloatLayout
 
     from gui.screens.home_tab import _FitCover
+
     novel = _make_novel("a:direct_g", chapters=10, last=2)
     cbox = tab._grid_cover(novel, cols=2)
     assert _find(cbox, FloatLayout) is None  # no overlay between cbox and cover
@@ -138,6 +147,7 @@ def test_continue_card_cover_has_direct_child(tab):
     from kivy.uix.floatlayout import FloatLayout
 
     from gui.screens.home_tab import _FitCover
+
     novel = _make_novel("a:direct_c", chapters=4, last=0)
     card = tab._continue_card(novel)
     assert _find(card, FloatLayout) is None
@@ -148,6 +158,7 @@ def test_continue_card_cover_has_direct_child(tab):
 
 # ---------- grid card widgets ----------
 
+
 def test_grid_card_is_bare(tab):
     novel = _make_novel("a:one", chapters=4)
     card = tab._grid_card(novel, cols=2)
@@ -157,7 +168,8 @@ def test_grid_card_is_bare(tab):
 
 def test_grid_card_shows_only_title_below_cover(tab):
     novel = _make_novel("a:two", chapters=4)
-    from gui.screens.novel_list import _TapCard as _Card
+    from gui.screens.home_tab import _SelectCard as _Card
+
     card = tab._grid_card(novel, cols=2)
     assert isinstance(card, _Card)
     texts = _labels(card)
@@ -167,6 +179,7 @@ def test_grid_card_shows_only_title_below_cover(tab):
 
 def test_grid_card_badge_shows_unread(tab):
     from gui.screens.home_tab import UnreadBadge
+
     novel = _make_novel("a:three", chapters=10, last=3)
     card = tab._grid_card(novel, cols=2)
     badge = _find(card, UnreadBadge)
@@ -177,6 +190,7 @@ def test_grid_card_badge_shows_unread(tab):
 
 def test_grid_card_no_badge_when_fully_read(tab):
     from gui.screens.home_tab import UnreadBadge
+
     novel = _make_novel("a:four", chapters=5, last=4)
     card = tab._grid_card(novel, cols=2)
     assert _find(card, UnreadBadge) is None
@@ -184,6 +198,7 @@ def test_grid_card_no_badge_when_fully_read(tab):
 
 def test_continue_card_gets_unread_badge(tab):
     from gui.screens.home_tab import UnreadBadge
+
     novel = _make_novel("a:five", chapters=8)
     card = tab._continue_card(novel)
     badge = _find(card, UnreadBadge)
@@ -193,9 +208,11 @@ def test_continue_card_gets_unread_badge(tab):
 
 # ---------- top bar count ----------
 
+
 def test_topbar_title_shows_library_count(tab):
-    tab._build_library([_make_novel("a:six", chapters=2),
-                        _make_novel("b:seven", chapters=3)])
+    tab._build_library(
+        [_make_novel("a:six", chapters=2), _make_novel("b:seven", chapters=3)]
+    )
     assert tab.topbar.ids.title_label.text == "NovelFetch · 2"
 
 
@@ -207,11 +224,14 @@ def test_topbar_title_resets_when_empty(tab):
 def test_layout_a_uses_bare_grid_card(tab):
     _make_novel("a:eight", chapters=4)
     _make_novel("b:nine", chapters=3)
-    from gui.screens.novel_list import _TapCard as _Card
-    tab._layout_A([
-        {"slug": "a:eight", "title": "eight", "count": 4},
-        {"slug": "b:nine", "title": "nine", "count": 3},
-    ])
+    from gui.screens.home_tab import _SelectCard as _Card
+
+    tab._layout_A(
+        [
+            {"slug": "a:eight", "title": "eight", "count": 4},
+            {"slug": "b:nine", "title": "nine", "count": 3},
+        ]
+    )
     # Every grid tile is a bare tap card, not a raised one.
     for card in tab.content_box.walk():
         if isinstance(card, _Card):

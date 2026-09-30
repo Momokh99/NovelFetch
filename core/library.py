@@ -15,16 +15,20 @@ can be used to obtain the app's data root (the directory the app chdir's
 into at startup via ``ensure_data_dir``).
 """
 
+import contextlib
 import json
 import os
 import re
 import shutil
-from typing import Optional
 
 from core.http_client import get_client
-from core.progress import _is_translation_file
+from core.progress import LANGUAGES
 
 NOVELS_DIR = "novels"
+
+# Canonical translation suffixes — the same table the language pickers use
+# (core.progress.LANGUAGES), so every file the app can write is recognised.
+LANG_CODES = frozenset(LANGUAGES.values())
 
 
 def _novels_dir(base_dir=None):
@@ -90,8 +94,11 @@ def local_chapters(slug, base_dir=None):
     chap_dir = os.path.join(_novels_dir(base_dir), slug)
     if not os.path.isdir(chap_dir):
         return []
-    files = [f for f in os.listdir(chap_dir)
-             if f.endswith(".txt") and _is_translation_file(f) is None]
+    files = [
+        f
+        for f in os.listdir(chap_dir)
+        if f.endswith(".txt") and _is_translation_file(f) is None
+    ]
     files.sort(key=_chapter_sort_key)
     chapters = []
     for i, f in enumerate(files, 1):
@@ -118,7 +125,7 @@ def local_chapter_count(slug, base_dir=None):
             if tl is None:
                 bases.add(f)
             elif tl == lang:
-                bases.add(f[: -len("_%s.txt" % lang)] + ".txt")
+                bases.add(f[: -len(f"_{lang}.txt")] + ".txt")
     except OSError:
         return 0
     return len(bases)
@@ -129,8 +136,10 @@ def has_chapters(slug, base_dir=None):
     path = os.path.join(_novels_dir(base_dir), slug)
     if not os.path.isdir(path):
         return False
-    return any(name.endswith(".txt") and _is_translation_file(name) is None
-               for name in os.listdir(path))
+    return any(
+        name.endswith(".txt") and _is_translation_file(name) is None
+        for name in os.listdir(path)
+    )
 
 
 def missing_chapters(chapters, slug, lang, base_dir=None):
@@ -168,6 +177,7 @@ def is_tracked(slug, base_dir=None):
     """True if a slug is registered as tracked, via meta.json or the
     tracking registry (which persists even after the folder is deleted)."""
     from core.progress import progress
+
     meta = read_meta(slug, base_dir)
     return bool(meta.get("tracked")) or progress.is_tracked(slug)
 
@@ -181,6 +191,7 @@ def library_entries(base_dir=None):
     entries = _scan_library(novels_dir)
     seen = {n["slug"] for n in entries}
     from core.progress import progress
+
     for t in progress.tracked_novels():
         if t["slug"] not in seen:
             entries.append({"slug": t["slug"], "title": t["title"], "count": 0})
@@ -188,14 +199,14 @@ def library_entries(base_dir=None):
     return entries
 
 
-def _library_sig_rows(entries):
+def _library_sig_rows(entries, base_dir=None):
     """Per-folder (slug, count, dir_mtime, top_mtime) rows used by
     library_fingerprint() instead of walking novels/ again."""
-    novels_dir = "novels"
+    novels_dir = _novels_dir(base_dir)
     sig = []
     for n in entries:
         slug = n["slug"]
-        folder = os.path.join("novels", slug)
+        folder = os.path.join(novels_dir, slug)
         try:
             files = os.listdir(folder)
         except OSError:
@@ -206,11 +217,10 @@ def _library_sig_rows(entries):
         for f in files:
             if f != "meta.json" and not f.startswith("cover."):
                 continue
-            try:
-                top = max(top, round(os.path.getmtime(
-                    os.path.join(folder, f)), 6))
-            except OSError:
-                pass
+            # A file may vanish between listdir and stat; keep the last
+            # known mtime in that case.
+            with contextlib.suppress(OSError):
+                top = max(top, round(os.path.getmtime(os.path.join(folder, f)), 6))
         try:
             dir_mtime = round(os.stat(folder).st_mtime, 6)
         except OSError:
@@ -224,11 +234,11 @@ def library_entries_and_fingerprint(base_dir=None):
     """Single-pass version of library_entries() + library_fingerprint():
     scans the novels/ tree once and derives both from it, instead of two
     independent full-tree walks back to back."""
-    from core.progress import progress
     entries = library_entries(base_dir)
-    sig = _library_sig_rows(entries)
+    sig = _library_sig_rows(entries, base_dir)
     try:
         from core.paths import data_dir
+
         prog_mtime = round(os.path.getmtime(data_dir()), 6)
     except Exception:
         prog_mtime = -1.0
@@ -253,6 +263,7 @@ def delete_library(slug, untrack=False, base_dir=None):
     novels_dir = _novels_dir(base_dir)
     shutil.rmtree(os.path.join(novels_dir, slug), ignore_errors=True)
     from core.progress import progress
+
     progress.remove(slug)
     if untrack:
         progress.untrack(slug)
@@ -263,18 +274,21 @@ def track(slug, title, base_dir=None):
     """Register a slug as tracked. Persists even if the novels/{slug}
     folder is removed, so tracking survives deleting the files."""
     from core.progress import progress
+
     progress.track(slug, title)
 
 
 def untrack(slug, base_dir=None):
     """Stop tracking a novel (keeps any reading progress)."""
     from core.progress import progress
+
     progress.untrack(slug)
 
 
 def is_tracked_base(slug, base_dir=None):
     """True if a slug is registered as tracked via the tracking registry."""
     from core.progress import progress
+
     return progress.is_tracked(slug)
 
 
@@ -287,14 +301,13 @@ def _scan_library(base_dir=None):
     if not os.path.isdir(novels_dir):
         return []
     result = []
-    for root, dirs, files in os.walk(novels_dir):
+    for root, _dirs, files in os.walk(novels_dir):
         if "meta.json" not in files:
             continue
         rel = os.path.relpath(root, novels_dir).replace(os.sep, "/")
-        count = sum(1 for f in files
-                    if f == "meta.json" or
-                    (f.endswith(".txt") and _is_translation_file(f) is None) or
-                    (not f.endswith(".txt") and not f.endswith(".tmp")))
+        count = sum(
+            1 for f in files if f.endswith(".txt") and _is_translation_file(f) is None
+        )
         result.append({"slug": rel, "title": _slug_to_title(rel), "count": count})
     result.sort(key=lambda n: n["slug"])
     return result
@@ -306,9 +319,16 @@ def _slug_to_title(slug):
 
 
 def _is_translation_file(fname):
-    """Return the lang code if *fname* is a translation file, else None."""
+    """Return the lang code if *fname* is a translation file, else None.
+
+    Codes come from ``LANG_CODES`` (derived from ``core.progress.LANGUAGES``),
+    the single source of truth shared with the language pickers — including
+    multi-part codes like ``zh-cn``.  "en" is deliberately not a translation:
+    English-source chapters are plain chapters and must be counted by the
+    library scan.
+    """
     m = re.match(r"^(.+)_([a-z]{2}(?:-[a-z]{2})?)\.txt$", fname)
-    if m and m.group(2) in {"ar", "en", "fr", "de", "es", "it", "ja", "zh", "ru", "pt", "tr", "hi", "nl", "pl", "vi", "th", "id", "ms"}:
+    if m and m.group(2) in LANG_CODES:
         return m.group(2)
     return None
 
@@ -330,8 +350,11 @@ def chapter_path(chapter_title, slug, lang=None, base_dir=None):
     """Return the local path for a chapter file."""
     if lang:
         return translated_path(chapter_title, slug, lang, base_dir)
-    return os.path.join(_novels_dir(base_dir), slug,
-                        f"{chapter_title.replace('/', '-').replace(' ', '_')}.txt")
+    return os.path.join(
+        _novels_dir(base_dir),
+        slug,
+        f"{chapter_title.replace('/', '-').replace(' ', '_')}.txt",
+    )
 
 
 def write_chapter(slug, title, content, lang=None, base_dir=None):

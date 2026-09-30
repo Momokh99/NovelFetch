@@ -1,28 +1,29 @@
-import os
 import urllib.parse
-from typing import Optional
 
 from bs4 import BeautifulSoup
 
-from core.http_client import get_client
+from core.http_client import fetch_soup, get_client
 from sources.base import Source
 
 
 class RoyalRoadSource(Source):
+    BASE_URL = "https://www.royalroad.com"
+
     def __init__(self):
         self._client = get_client()
+
     @property
     def name(self) -> str:
         return "royalroad"
 
     @property
     def label(self) -> str:
-       return "RoyalRoad"
+        return "RoyalRoad"
 
     @property
     def ascii_art(self) -> str:
         return """\
-██████╗  ██████╗ ██╗   ██╗ █████╗ ██╗     ██████╗  ██████╗  █████╗ ██████╗ 
+██████╗  ██████╗ ██╗   ██╗ █████╗ ██╗     ██████╗  ██████╗  █████╗ ██████╗
 ██╔══██╗██╔═══██╗╚██╗ ██╔╝██╔══██╗██║     ██╔══██╗██╔═══██╗██╔══██╗██╔══██╗
 ██████╔╝██║   ██║ ╚████╔╝ ███████║██║     ██████╔╝██║   ██║███████║██║  ██║
 ██╔══██╗██║   ██║  ╚██╔╝  ██╔══██║██║     ██╔══██╗██║   ██║██╔══██║██║  ██║
@@ -60,30 +61,23 @@ class RoyalRoadSource(Source):
             "gamelit": "GameLit",
         }
 
-    async def fetch_url(self, url: str, params: Optional[dict] = None):
-        response = await self._client.get(url, params=params)
-        return BeautifulSoup(response.text, "html.parser")
+    async def fetch_url(self, url: str, params: dict | None = None) -> BeautifulSoup:
+        return await fetch_soup(self._client, url, params=params)
 
-    def parse_slug(self, url: str) -> Optional[str]:
-        o=urllib.parse.urlparse(url)
+    def parse_slug(self, url: str) -> str | None:
+        o = urllib.parse.urlparse(url)
         if o.hostname and "royalroad.com" in o.hostname:
-            p=o.path
-            parts = p.split("/")
-            idx = parts.index("fiction")
-            slug_parts = parts[idx + 1:]
-            slug = "/".join(slug_parts)
-            slug = slug.rstrip("/")
-            return slug
-
+            parts = o.path.split("/")
+            try:
+                idx = parts.index("fiction")
+            except ValueError:
+                return None
+            slug = "/".join(parts[idx + 1 :]).rstrip("/")
+            return slug or None
+        return None
 
     def qualify_slug(self, slug: str) -> str:
         return f"royalroad:{slug}"
-
-    @staticmethod
-    def _absolutize(url: str) -> str:
-        if url.startswith("/"):
-            return "https://www.royalroad.com" + url
-        return url
 
     def extract_novel_rows(self, soup) -> list[dict]:
         results = []
@@ -95,31 +89,34 @@ class RoyalRoadSource(Source):
             href = title_tag.get("href", "")
             slug = self.parse_slug("https://www.royalroad.com" + href)
             img_tag = row.select_one('img[data-type="cover"]')
-            cover = img_tag["src"] if img_tag else ""
+            cover = img_tag.get("src", "") if img_tag else ""
             cover = self._absolutize(cover)
-            results.append({
-                "title": title_tag.text.strip(),
-                "author": "Unknown",
-                "slug": slug or "",
-                "latest": "",
-                "cover": cover,
-            })
+            results.append(
+                {
+                    "title": title_tag.text.strip(),
+                    "author": "Unknown",
+                    "slug": slug or "",
+                    "latest": "",
+                    "cover": cover,
+                }
+            )
         return results
 
     async def search(self, query: str, page: int = 1) -> tuple[list[dict], int]:
-        url = f"https://www.royalroad.com/fictions/search?keyword={query}&page={page}"
-        soup = await self.fetch_url(url)
+        soup = await self.fetch_url(
+            "https://www.royalroad.com/fictions/search",
+            params={"keyword": query, "page": page},
+        )
         novels = self.extract_novel_rows(soup)
         page_links = soup.select("ul.pagination.justify-content-center a[data-page]")
         numbers = []
         for a in page_links:
             dp = a.get("data-page")
-            if dp and str(dp).isdigit():
-                numbers.append(int(str(dp)))
+            if isinstance(dp, str) and dp.isdigit():
+                numbers.append(int(dp))
         total_pages = max(numbers) if numbers else 1
 
         return novels, total_pages
-
 
     async def fetch_chapters(self, slug: str) -> list[dict]:
         url = f"https://www.royalroad.com/fiction/{slug}"
@@ -131,26 +128,28 @@ class RoyalRoadSource(Source):
             if not a:
                 continue
             href = a.get("href", "")
-            chapters.append({
-                "num": i,
-                "title": a.text.strip(),
-                "url": "https://www.royalroad.com" + str(href),
-            })
+            chapters.append(
+                {
+                    "num": i,
+                    "title": a.text.strip(),
+                    "url": self._absolutize(str(href)),
+                }
+            )
         return chapters
 
-    async def read_chapter(self, url: str) -> Optional[list[str]]:
+    async def read_chapter(self, url: str) -> list[str] | None:
         soup = await self.fetch_url(url)
-        main_cont = soup.select_one(".chapter-content")
-        if not main_cont:
+        main_content = soup.select_one(".chapter-content")
+        if not main_content:
             return None
-        return [p.get_text(strip=True) for p in main_cont.find_all("p")]
+        return [p.get_text(strip=True) for p in main_content.find_all("p")]
 
     async def cover_url(self, slug: str) -> str:
         url = f"https://www.royalroad.com/fiction/{slug}"
         soup = await self.fetch_url(url)
         img = soup.find("img", class_="thumbnail")
         if img:
-            return self._absolutize(str(img["src"]))
+            return self._absolutize(str(img.get("src") or ""))
         return ""
 
     async def browse_genre(self, genre_slug: str) -> list[dict]:

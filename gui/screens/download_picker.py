@@ -1,5 +1,6 @@
+from kivy.metrics import dp
 from kivymd.app import MDApp
-from kivymd.uix.button import MDButton, MDButtonText
+from kivymd.uix.boxlayout import MDBoxLayout
 from kivymd.uix.dialog import (
     MDDialog,
     MDDialogContentContainer,
@@ -33,6 +34,9 @@ class DownloadPickerScreen(MDScreen):
         self._total = 0
         self._lang_code = "ar"
         self._lang_dialog = None
+        self._tr_section_label = (
+            None  # inner label of the Translated header; updated in-place
+        )
 
         self.topbar = self.ids.topbar
         self.title_label = self.ids.title_label
@@ -40,8 +44,7 @@ class DownloadPickerScreen(MDScreen):
         self.lang_label = self.ids.lang_label
         self.list_view = self.ids.list_view
 
-    def load(self, chapters=None, slug="", source=None, title="",
-             total=None, **kwargs):
+    def load(self, chapters=None, slug="", source=None, title="", total=None, **kwargs):
         self.chapters = chapters or []
         self.slug = slug
         self.source = source
@@ -53,16 +56,18 @@ class DownloadPickerScreen(MDScreen):
         self._rebuild()
 
     def _lang_label_update(self):
-        self.lang_label.text = _CODE_TO_LABEL.get(self._lang_code,
-                                                    self._lang_code)
+        self.lang_label.text = _CODE_TO_LABEL.get(self._lang_code, self._lang_code)
 
     def _rebuild(self):
         self.list_view.clear_widgets()
         local = utils._local_chapters(self.slug) if self.slug else []
         downloaded = len(local)
         seen = progress.get_seen(self.slug) if self.slug else set()
-        unread = [ch for i, ch in enumerate(self.chapters)
-                  if i not in seen and i >= downloaded]
+        unread = [
+            ch
+            for i, ch in enumerate(self.chapters)
+            if i not in seen and i >= downloaded
+        ]
         remaining = self.chapters[downloaded:]
         self.summary_label.text = (
             f"{downloaded} downloaded  |  {len(unread)} unread  |  "
@@ -72,50 +77,64 @@ class DownloadPickerScreen(MDScreen):
         # --- Original (English) ---
         if remaining:
             self.list_view.add_widget(self._section_header("Original"))
-            for n in (5, 10, 25):
-                subset = remaining[:n]
-                self.list_view.add_widget(MDListItem(MDListItemHeadlineText(
-                    text=f"Next {len(subset)}",
-                ), on_release=lambda *_, s=subset: self._go(s)))
-            if unread:
-                self.list_view.add_widget(MDListItem(MDListItemHeadlineText(
-                    text=f"All unread ({len(unread)})",
-                ), on_release=lambda *_, s=unread: self._go(s)))
-            if self.chapters:
-                self.list_view.add_widget(MDListItem(MDListItemHeadlineText(
-                    text=f"All ({len(self.chapters)})",
-                ), on_release=lambda *_, s=self.chapters: self._go(s)))
+            self._add_option_rows(remaining, unread, self._go)
 
         # --- Translated ---
         if self.chapters:
             lang_label = _CODE_TO_LABEL.get(self._lang_code, self._lang_code)
-            self.list_view.add_widget(self._section_header(
-                f"Translated ({lang_label})"))
-            for n in (5, 10, 25):
-                subset = remaining[:n] if remaining else []
-                if subset:
-                    self.list_view.add_widget(MDListItem(MDListItemHeadlineText(
-                        text=f"Next {len(subset)}",
-                    ), on_release=lambda *_, s=subset: self._go_tr(s)))
-            if unread:
-                self.list_view.add_widget(MDListItem(MDListItemHeadlineText(
-                    text=f"All unread ({len(unread)})",
-                ), on_release=lambda *_, s=unread: self._go_tr(s)))
-            if self.chapters:
-                self.list_view.add_widget(MDListItem(MDListItemHeadlineText(
-                    text=f"All ({len(self.chapters)})",
-                ), on_release=lambda *_, s=self.chapters: self._go_tr(s)))
+            tr_hdr = self._section_header(f"Translated ({lang_label})")
+            # Keep a ref to the label so language changes can update it without
+            # a full widget rebuild.
+            self._tr_section_label = tr_hdr.children[0] if tr_hdr.children else None
+            self.list_view.add_widget(tr_hdr)
+            self._add_option_rows(remaining, unread, self._go_tr)
+
+    def _add_option_rows(self, remaining, unread, on_go):
+        """Next-N / All-unread / All rows; `on_go` picks _go vs _go_tr."""
+        for n in (5, 10, 25):
+            subset = remaining[:n]
+            if subset:
+                self.list_view.add_widget(
+                    MDListItem(
+                        MDListItemHeadlineText(
+                            text=f"Next {len(subset)}",
+                        ),
+                        on_release=lambda *_, s=subset: on_go(s),
+                    )
+                )
+        if unread:
+            self.list_view.add_widget(
+                MDListItem(
+                    MDListItemHeadlineText(
+                        text=f"All unread ({len(unread)})",
+                    ),
+                    on_release=lambda *_, s=unread: on_go(s),
+                )
+            )
+        if self.chapters:
+            self.list_view.add_widget(
+                MDListItem(
+                    MDListItemHeadlineText(
+                        text=f"All ({len(self.chapters)})",
+                    ),
+                    on_release=lambda *_, s=self.chapters: on_go(s),
+                )
+            )
 
     @staticmethod
     def _section_header(text):
-        from kivy.metrics import dp
-        from kivymd.uix.boxlayout import MDBoxLayout
         box = MDBoxLayout(
-            size_hint_y=None, height=dp(32),
-            padding=(dp(16), dp(12), dp(16), 0))
-        box.add_widget(MDLabel(
-            text=text, bold=True, theme_text_color="Secondary",
-            font_style="Label", role="medium"))
+            size_hint_y=None, height=dp(32), padding=(dp(16), dp(12), dp(16), 0)
+        )
+        box.add_widget(
+            MDLabel(
+                text=text,
+                bold=True,
+                theme_text_color="Secondary",
+                font_style="Label",
+                role="medium",
+            )
+        )
         return box
 
     def _go(self, subset):
@@ -143,9 +162,14 @@ class DownloadPickerScreen(MDScreen):
     def _pick_language(self):
         rows = MDList()
         for label, code in LANGUAGES.items():
-            rows.add_widget(MDListItem(MDListItemHeadlineText(
-                text=label,
-            ), on_release=lambda *_, c=code, l=label: self._set_lang(c, l)))
+            rows.add_widget(
+                MDListItem(
+                    MDListItemHeadlineText(
+                        text=label,
+                    ),
+                    on_release=lambda *_, c=code, lbl=label: self._set_lang(c, lbl),
+                )
+            )
         self._lang_dialog = MDDialog(
             MDDialogHeadlineText(
                 text="Translate to",
@@ -160,7 +184,12 @@ class DownloadPickerScreen(MDScreen):
             self._lang_dialog.dismiss()
         self._lang_code = code
         self._lang_label_update()
-        self._rebuild()
+        lang_label = _CODE_TO_LABEL.get(code, code)
+        if self._tr_section_label is not None:
+            # Update only the header text — avoids a full widget clear+rebuild flash.
+            self._tr_section_label.text = f"Translated ({lang_label})"
+        else:
+            self._rebuild()
 
     def _notify(self, text):
         _snack(text)

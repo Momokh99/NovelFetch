@@ -3,11 +3,10 @@
 import json
 import os
 
-import pytest
-
 from gui.screens import utils
 
 # ---- translation-file detection ----
+
 
 def test_is_translation_file_supported_langs():
     f = utils._is_translation_file
@@ -26,10 +25,14 @@ def test_is_translation_file_rejects():
 
 # ---- chapter ordering ----
 
+
 def test_chapter_sort_key_numeric_not_lexicographic():
     names = ["Chapter_10.txt", "Chapter_2.txt", "Chapter_1.txt"]
     assert sorted(names, key=utils._chapter_sort_key) == [
-        "Chapter_1.txt", "Chapter_2.txt", "Chapter_10.txt"]
+        "Chapter_1.txt",
+        "Chapter_2.txt",
+        "Chapter_10.txt",
+    ]
 
 
 def test_chapter_sort_key_no_digits():
@@ -39,10 +42,14 @@ def test_chapter_sort_key_no_digits():
 def test_chapter_sort_key_leading_zeros():
     names = ["ch-002.txt", "ch-010.txt", "ch-001.txt"]
     assert sorted(names, key=utils._chapter_sort_key) == [
-        "ch-001.txt", "ch-002.txt", "ch-010.txt"]
+        "ch-001.txt",
+        "ch-002.txt",
+        "ch-010.txt",
+    ]
 
 
 # ---- local chapters ----
+
 
 def test_local_chapters_excludes_translations_and_sorts(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
@@ -90,9 +97,11 @@ def test_local_chapters_non_txt_ignored(tmp_path, monkeypatch):
 
 # ---- slug/source helpers ----
 
+
 def test_get_source_from_qualified_slug():
     src = utils._get_source("royalroad:some-novel")
-    assert src is not None and src.name == "royalroad"
+    assert src is not None
+    assert src.name == "royalroad"
     assert utils._get_source("unqualified") is None
     assert utils._get_source("") is None
     assert utils._get_source("unknown:slug") is None
@@ -148,6 +157,7 @@ def test_has_chapters_missing_dir(tmp_path, monkeypatch):
 
 # ---- cover cache paths ----
 
+
 def test_cover_cache_path_deterministic_and_ext():
     a = utils._cover_cache_path("http://x/c.png")
     b = utils._cover_cache_path("http://x/c.png?size=big")
@@ -164,7 +174,8 @@ def test_cached_cover_miss_then_hit(tmp_path, monkeypatch):
     assert utils._cached_cover(url) == ""
     path = utils._cover_cache_path(url)
     os.makedirs(utils._COVER_CACHE_DIR, exist_ok=True)
-    open(path, "wb").write(b"x")
+    with open(path, "wb") as f:
+        f.write(b"x")
     assert utils._cached_cover(url) == path
 
 
@@ -175,6 +186,7 @@ def test_cached_cover_different_urls_different_paths():
 
 
 # ---- time-ago ----
+
 
 def test_time_ago_empty_or_falsy():
     assert utils._time_ago(None) == ""
@@ -190,6 +202,7 @@ def test_time_ago_units():
 
 
 # ---- last-updated meta helpers ----
+
 
 def test_last_updated_roundtrip(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)

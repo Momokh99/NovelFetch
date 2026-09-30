@@ -1,8 +1,8 @@
 """Tests for chapter_list.py pure logic — selection, pagination, download subset."""
 
-import pytest
 
 # ---- _toggle_selection logic (pure set operations) ----
+
 
 class FakeSelection:
     """Standalone replica of ChapterListScreen._toggle_selection logic."""
@@ -65,8 +65,8 @@ def test_toggle_selection_multiple():
 
 def test_toggle_selection_mixed_modes():
     s = FakeSelection()
-    s.toggle(1, active=True)   # explicit add
-    s.toggle(2)                # flip add
+    s.toggle(1, active=True)  # explicit add
+    s.toggle(2)  # flip add
     s.toggle(1, active=False)  # explicit remove
     assert s._selected == {2}
 
@@ -94,6 +94,7 @@ def test_download_selected_empty():
 
 
 # ---- _load_more pagination ----
+
 
 def test_load_more_step_calculation():
     """_load_more appends _row_step rows at a time."""
@@ -135,6 +136,7 @@ def test_load_more_guard_when_loading():
 
 
 # ---- overflow menu branching ----
+
 
 def test_overflow_tracked_only_shows_remove():
     """Tracked novel with no chapters → 'Remove from library'."""

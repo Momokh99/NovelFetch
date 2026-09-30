@@ -3,6 +3,7 @@ from textual.containers import Vertical
 from textual.screen import Screen
 from textual.widgets import Footer, Label, ListItem, ListView, LoadingIndicator, Static
 
+from core.http_client import describe_error
 from sources import REGISTRY
 from tui.shared import CustomHeader
 
@@ -25,7 +26,7 @@ class MainMenu(Screen):
                 yield ListView(
                     ListItem(Label("Search by name"), id="search"),
                     ListItem(Label("My Library"), id="library"),
-                    id="primary-actions"
+                    id="primary-actions",
                 )
             with Vertical(id="browse-group", classes="section-group"):
                 yield Static("BROWSE", classes="section-header")
@@ -35,7 +36,7 @@ class MainMenu(Screen):
                     ListItem(Label("Most popular"), id="popular"),
                     ListItem(Label("Completed novels"), id="completed"),
                     ListItem(Label("Browse by genre"), id="genre"),
-                    id="browse-actions"
+                    id="browse-actions",
                 )
             yield LoadingIndicator(classes="loading")
         yield Footer()
@@ -62,20 +63,24 @@ class MainMenu(Screen):
             src = self.app.current_source
             if item_id == "search":
                 from tui.browse import SearchScreen
+
                 self.app.push_screen(SearchScreen(source=src))
             elif item_id == "library":
                 from tui.library import MyLibraryScreen
+
                 self.app.push_screen(MyLibraryScreen())
             elif item_id == "genre":
                 from tui.browse import GenreScreen
+
                 self.app.push_screen(GenreScreen(source=src))
             else:
                 soup = await src.fetch_url(src.browse_urls[item_id])
                 novels = src.extract_novel_rows(soup)
                 from tui.browse import NovelListScreen
+
                 self.app.push_screen(NovelListScreen(novels, source=src))
-        except Exception:
-            self.notify("Failed to fetch novels. Check your connection.", timeout=3)
+        except Exception as error:
+            self.notify(describe_error(error, "Failed to fetch novels"), timeout=3)
         finally:
             for lv_id in ["primary-actions", "browse-actions"]:
                 self.query_one(f"#{lv_id}", ListView).disabled = False

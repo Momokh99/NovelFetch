@@ -1,4 +1,5 @@
 import asyncio
+import contextlib
 import os
 
 from textual.binding import Binding
@@ -15,7 +16,8 @@ from textual.widgets import (
 )
 
 from core.epub import _export_epub
-from core.progress import _slug_to_title
+from core.http_client import describe_error
+from core.library import _slug_to_title, write_chapter
 from core.translation import _translate_text
 from tui.shared import CustomHeader, LanguagePicker
 from tui.utils import _get_source
@@ -37,25 +39,29 @@ class DownloadDialog(Screen):
         self._epub_mode = False
 
     def compose(self):
-        with Vertical(classes="dialog-overlay"):
-            with Vertical(classes="dialog-box"):
-                yield Static("Download  |  EPUB: OFF  (e)", id="dl-epub-status", classes="title")
-                items = []
-                if self.current_idx is not None:
-                    items.append(ListItem(Label("Download Current")))
-                    if self.has_translation:
-                        items.append(ListItem(Label("Download Current (Translated)")))
-                items.append(ListItem(Label("Download All")))
-                items.append(ListItem(Label("Download All (Translated)")))
-                items.append(ListItem(Label("Download Range...")))
-                items.append(ListItem(Label("Download Range (Translated)...")))
-                yield ListView(*items, id="dl-options")
+        with Vertical(classes="dialog-overlay"), Vertical(classes="dialog-box"):
+            yield Static(
+                "Download  |  EPUB: OFF  (e)", id="dl-epub-status", classes="title"
+            )
+            items = []
+            if self.current_idx is not None:
+                items.append(ListItem(Label("Download Current")))
+                if self.has_translation:
+                    items.append(ListItem(Label("Download Current (Translated)")))
+            items.append(ListItem(Label("Download All")))
+            items.append(ListItem(Label("Download All (Translated)")))
+            items.append(ListItem(Label("Download Range...")))
+            items.append(ListItem(Label("Download Range (Translated)...")))
+            yield ListView(*items, id="dl-options")
+
     def on_mount(self):
         self.query_one("#dl-options", ListView).focus()
+
     def action_toggle_epub(self):
         self._epub_mode = not self._epub_mode
         s = "ON" if self._epub_mode else "OFF"
         self.query_one("#dl-epub-status", Static).update(f"Download  |  EPUB: {s}  (e)")
+
     def on_list_view_selected(self, event):
         idx = event.list_view.index
         if idx is None:
@@ -82,20 +88,21 @@ class DownloadDialog(Screen):
             S = DownloadEPUBScreen if epub else DownloadProgressScreen
             app.push_screen(S(ch, sl, src))
         elif action_idx == 1:
+
             def choose_language(lang):
                 if not lang:
                     return
                 screen = (
                     DownloadEPUBScreen(ch, sl, src, translate=True, lang=lang)
                     if epub
-                    else DownloadProgressScreen(
-                        ch, sl, src, translate=True, lang=lang
+                    else DownloadProgressScreen(ch, sl, src, translate=True, lang=lang)
+                )
+                app.push_screen(
+                    ConfirmScreen(
+                        "Translating all chapters is slow. Continue?",
+                        lambda: app.push_screen(screen),
                     )
                 )
-                app.push_screen(ConfirmScreen(
-                    "Translating all chapters is slow. Continue?",
-                    lambda: app.push_screen(screen),
-                ))
 
             app.push_screen(LanguagePicker(), choose_language)
         elif action_idx == 2:
@@ -107,12 +114,16 @@ class DownloadDialog(Screen):
         def choose_language(lang):
             if not lang:
                 return
-            app.push_screen(ConfirmScreen(
-                "Translating chapters is slow. Continue?",
-                lambda: app.push_screen(DownloadChaptersScreen(
-                    chapters, slug, source, translate=True, lang=lang, epub=epub
-                )),
-            ))
+            app.push_screen(
+                ConfirmScreen(
+                    "Translating chapters is slow. Continue?",
+                    lambda: app.push_screen(
+                        DownloadChaptersScreen(
+                            chapters, slug, source, translate=True, lang=lang, epub=epub
+                        )
+                    ),
+                )
+            )
 
         app.push_screen(LanguagePicker(), choose_language)
 
@@ -123,10 +134,19 @@ class DownloadDialog(Screen):
             if src is None:
                 app.notify("No source available.", timeout=3)
                 return
-            ok = await src.save_chapter(ch["url"], ch["title"], self.slug)
-            app.notify("Downloaded!" if ok else "Already saved.", timeout=2)
-        except Exception:
-            app.notify("Failed to download chapter.", timeout=3)
+            safe_title = ch["title"].replace("/", "-").replace(" ", "_")
+            path = f"novels/{self.slug}/{safe_title}.txt"
+            if os.path.exists(path):
+                app.notify("Already saved.", timeout=2)
+                return
+            lines = await src.read_chapter(ch["url"])
+            if not lines:
+                app.notify("Failed to read chapter.", timeout=3)
+                return
+            write_chapter(self.slug, ch["title"], "\n\n".join(lines))
+            app.notify("Downloaded!", timeout=2)
+        except Exception as error:
+            app.notify(describe_error(error, "Failed to download chapter"), timeout=3)
 
     async def _save_current_translated(self, app):
         try:
@@ -140,11 +160,17 @@ class DownloadDialog(Screen):
                 app.notify("Failed to read chapter.", timeout=3)
                 return
             text = "\n\n".join(lines)
-            app.push_screen(LanguagePicker(), lambda lang: (
-                lang and asyncio.create_task(self._do_save_translated(lang, app))
-            ))
-        except Exception:
-            app.notify("Failed to read chapter for translation.", timeout=3)
+            app.push_screen(
+                LanguagePicker(),
+                lambda lang: (
+                    lang and asyncio.create_task(self._do_save_translated(lang, app))
+                ),
+            )
+        except Exception as error:
+            app.notify(
+                describe_error(error, "Failed to read chapter for translation"),
+                timeout=3,
+            )
 
     async def _do_save_translated(self, lang, app):
         try:
@@ -168,12 +194,13 @@ class DownloadDialog(Screen):
             with open(path, "w", encoding="utf-8") as f:
                 f.write(translated)
             app.notify(f"Translated ({lang}) saved.", timeout=2)
-        except Exception:
-            app.notify("Failed to save translated chapter.", timeout=3)
+        except Exception as error:
+            app.notify(
+                describe_error(error, "Failed to save translated chapter"), timeout=3
+            )
 
     def action_dismiss(self):
         self.app.pop_screen()
-
 
 
 class DownloadChaptersScreen(Screen):
@@ -189,23 +216,38 @@ class DownloadChaptersScreen(Screen):
         self._epub = epub
 
     def compose(self):
-        with Vertical(classes="dialog-overlay"):
-            with Vertical(classes="dialog-box"):
-                label = "Download Chapters (Translated)" if self.translate else "Download Chapters"
-                yield Static(label, classes="title")
-                yield Static("Range: 1-50  |  List: 1,3,5  |  Blank: all", classes="title")
-                yield Input(placeholder="Type a range, list, or press Enter for all")
+        with Vertical(classes="dialog-overlay"), Vertical(classes="dialog-box"):
+            label = (
+                "Download Chapters (Translated)"
+                if self.translate
+                else "Download Chapters"
+            )
+            yield Static(label, classes="title")
+            yield Static("Range: 1-50  |  List: 1,3,5  |  Blank: all", classes="title")
+            yield Input(placeholder="Type a range, list, or press Enter for all")
 
     def on_mount(self):
         self.query_one(Input).focus()
 
     def on_input_submitted(self, event):
         selected = self._parse(event.value)
-        filtered = [ch for ch in self.chapters if ch["num"] in selected] if selected else self.chapters
+        filtered = (
+            [ch for ch in self.chapters if ch["num"] in selected]
+            if selected
+            else self.chapters
+        )
         self.app.pop_screen()
         if filtered:
             S = DownloadEPUBScreen if self._epub else DownloadProgressScreen
-            self.app.push_screen(S(filtered, self.slug, self.source, translate=self.translate, lang=self._lang))
+            self.app.push_screen(
+                S(
+                    filtered,
+                    self.slug,
+                    self.source,
+                    translate=self.translate,
+                    lang=self._lang,
+                )
+            )
         else:
             self.notify("No matching chapters.", timeout=2)
 
@@ -218,27 +260,23 @@ class DownloadChaptersScreen(Screen):
             part = part.strip()
             if "-" in part:
                 a, b = part.split("-", 1)
-                try:
+                with contextlib.suppress(ValueError):
                     nums.update(range(int(a.strip()), int(b.strip()) + 1))
-                except ValueError:
-                    pass
             else:
-                try:
+                with contextlib.suppress(ValueError):
                     nums.add(int(part))
-                except ValueError:
-                    pass
         return sorted(nums)
 
     def action_cancel(self):
         self.app.pop_screen()
 
 
-
-
 class DownloadProgressScreen(Screen):
     BINDINGS = [Binding("escape", "pop", "Close")]
 
-    def __init__(self, chapters: list, slug: str, source=None, translate=False, lang="ar"):
+    def __init__(
+        self, chapters: list, slug: str, source=None, translate=False, lang="ar"
+    ):
         super().__init__()
         self.chapters = chapters
         self.slug = slug
@@ -281,7 +319,9 @@ class DownloadProgressScreen(Screen):
                     return False
                 text = "\n\n".join(lines)
                 if self.translate:
-                    translated = await asyncio.to_thread(_translate_text, text, self._lang)
+                    translated = await asyncio.to_thread(
+                        _translate_text, text, self._lang
+                    )
                     if translated is None:
                         return False
                     text = translated
@@ -346,7 +386,9 @@ class DownloadEPUBScreen(Screen):
                     return None
                 text = "\n\n".join(lines)
                 if self.translate:
-                    translated = await asyncio.to_thread(_translate_text, text, self._lang)
+                    translated = await asyncio.to_thread(
+                        _translate_text, text, self._lang
+                    )
                     if translated is None:
                         return None
                     text = translated
@@ -386,14 +428,14 @@ class ConfirmScreen(Screen):
         super().__init__()
         self.message = message
         self.callback = callback
+
     def compose(self):
-        with Vertical(classes="dialog-overlay"):
-            with Vertical(classes="dialog-box"):
-                yield Static(self.message, classes="title")
-                yield ListView(
-                    ListItem(Label("Yes")),
-                    ListItem(Label("No")),
-                )
+        with Vertical(classes="dialog-overlay"), Vertical(classes="dialog-box"):
+            yield Static(self.message, classes="title")
+            yield ListView(
+                ListItem(Label("Yes")),
+                ListItem(Label("No")),
+            )
 
     def on_mount(self):
         self.query_one(ListView).focus()
@@ -403,8 +445,3 @@ class ConfirmScreen(Screen):
         self.app.pop_screen()
         if event.list_view.index == 0:
             self.callback()
-
-
-
-
-

@@ -45,7 +45,8 @@ class TopBar(MDBoxLayout):
             self._back_btn = None
         if self.back:
             self._back_btn = MDIconButton(
-                icon="arrow-left", on_release=lambda *_: self._go_back())
+                icon="arrow-left", on_release=lambda *_: self._go_back()
+            )
             # Children list is reverse-ordered; appending puts the arrow
             # leftmost in the horizontal layout, matching the Python-only bar.
             self.add_widget(self._back_btn, index=len(self.children))

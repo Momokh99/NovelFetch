@@ -8,14 +8,14 @@ from core import progress as progress_mod
 from core.progress import ProgressTracker
 
 
-@pytest.fixture()
+@pytest.fixture
 def tracker(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     (tmp_path / "novels").mkdir()
     return ProgressTracker(str(tmp_path / "novels" / "progress.json"))
 
 
-@pytest.fixture()
+@pytest.fixture
 def mock_time(monkeypatch):
     """Return a callable that yields deterministic timestamps in sequence."""
     clock = iter(range(1000, 10000))
@@ -187,61 +187,5 @@ def test_tracked_novels_empty(tracker):
     assert tracker.tracked_novels() == []
 
 
-def test_is_translation_file():
-    f = progress_mod._is_translation_file
-    assert f("Chapter_1_ar.txt") == "ar"
-    assert f("Chapter_1_zh-cn.txt") == "zh-cn"
-    assert f("Chapter_1_xx.txt") is None
-    assert f("Chapter_1.txt") is None
-    assert f("cover.jpg") is None
-    assert f("") is None
-
-
-def test_scan_library_counts(tmp_path, monkeypatch):
-    monkeypatch.chdir(tmp_path)
-    d = tmp_path / "novels" / "rr:demo"
-    d.mkdir(parents=True)
-    (d / "meta.json").write_text('{"title": "Demo"}')
-    (d / "Ch_1.txt").write_text("x")
-    (d / "Ch_2.txt").write_text("x")
-    (d / "Ch_2_es.txt").write_text("translated")
-    (d / "cover.jpg").write_bytes(b"x")
-
-    lib = progress_mod._scan_library()
-    assert len(lib) == 1
-    entry = lib[0]
-    assert entry["slug"] == "rr:demo"
-    assert entry["count"] == 4
-    assert entry["title"] == "Demo"
-
-
-def test_scan_library_multiple_novels(tmp_path, monkeypatch):
-    monkeypatch.chdir(tmp_path)
-    novels = tmp_path / "novels"
-    for slug in ("rr:alpha", "rr:beta"):
-        d = novels / slug
-        d.mkdir(parents=True)
-        (d / "meta.json").write_text('{"title": "X"}')
-        (d / "Ch_1.txt").write_text("x")
-
-    lib = progress_mod._scan_library()
-    assert len(lib) == 2
-    assert [e["slug"] for e in lib] == ["rr:alpha", "rr:beta"]
-    assert all(e["count"] == 2 for e in lib)  # meta + 1 chapter
-
-
-def test_scan_library_empty(tmp_path, monkeypatch):
-    monkeypatch.chdir(tmp_path)
-    (tmp_path / "novels").mkdir()
-    assert progress_mod._scan_library() == []
-
-
-def test_scan_library_no_novels_dir(tmp_path, monkeypatch):
-    monkeypatch.chdir(tmp_path)
-    assert progress_mod._scan_library() == []
-
-
-def test_slug_to_title():
-    assert progress_mod._slug_to_title("my-novel") == "My Novel"
-    assert progress_mod._slug_to_title("rr:the-beginning") == "The Beginning"
-    assert progress_mod._slug_to_title("plain") == "Plain"
+# _is_translation_file / _scan_library / _slug_to_title moved to
+# core.library — their tests live in tests/test_library.py.

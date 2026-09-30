@@ -3,11 +3,14 @@ import urllib.parse
 
 from bs4 import BeautifulSoup
 
-from core.http_client import get_client_with_headers
+from core.http_client import get_client_with_headers, parse_html
 from sources.base import Source
+
+_MAX_SEARCH_PAGES = 50  # ScribbleHub gives no total-page count in HTML
 
 
 class ScribbleHubSource(Source):
+    BASE_URL = "https://www.scribblehub.com"
     _headers = {
         "Referer": "https://www.scribblehub.com/",
     }
@@ -24,19 +27,17 @@ class ScribbleHubSource(Source):
     def blocked(self) -> bool:
         return self._blocked
 
-    @staticmethod
-    def _absolutize(url: str) -> str:
-        if url.startswith("/"):
-            return "https://www.scribblehub.com" + url
-        return url
-
     def _get_httpx_client(self):
         if self._httpx_client is None:
-            self._httpx_client = get_client_with_headers(
-                ScribbleHubSource._headers)
+            self._httpx_client = get_client_with_headers(ScribbleHubSource._headers)
         return self._httpx_client
 
-    async def _fetch(self, url: str, data: dict | None = None):
+    async def _fetch(
+        self,
+        url: str,
+        data: dict | None = None,
+        params: dict | None = None,
+    ):
         # curl_cffi is a compiled AAPI extension that python-for-android cannot
         # cross-build reliably. Import lazily so the module (and the whole app)
         # still imports when it is unavailable; requests fall back to plain
@@ -46,20 +47,31 @@ class ScribbleHubSource(Source):
         except (ImportError, OSError):
             client = self._get_httpx_client()
             if data:
-                resp = await client.post(url, data=data)
+                resp = await client.post(url, data=data, params=params)
             else:
-                resp = await client.get(url)
+                resp = await client.get(url, params=params)
             if resp.status_code in (403, 429) or "Just a moment" in resp.text:
                 self._blocked = True
             return resp
 
         if data:
             response = await asyncio.to_thread(
-                lambda: curl_requests.post(url, data=data, impersonate="chrome120", headers=ScribbleHubSource._headers)
+                lambda: curl_requests.post(
+                    url,
+                    data=data,
+                    params=params,
+                    impersonate="chrome120",
+                    headers=ScribbleHubSource._headers,
+                )
             )
         else:
             response = await asyncio.to_thread(
-                lambda: curl_requests.get(url, impersonate="chrome120", headers=ScribbleHubSource._headers)
+                lambda: curl_requests.get(
+                    url,
+                    params=params,
+                    impersonate="chrome120",
+                    headers=ScribbleHubSource._headers,
+                )
             )
         if response.status_code in (403, 429) or "Just a moment" in response.text:
             self._blocked = True
@@ -72,6 +84,7 @@ class ScribbleHubSource(Source):
     @property
     def label(self) -> str:
         return "ScribbleHub"
+
     @property
     def ascii_art(self) -> str:
         return """\
@@ -108,7 +121,6 @@ class ScribbleHubSource(Source):
             "josei": "Josei",
             "litrpg": "LitRPG",
             "martial-arts": "Martial Arts",
-            "mature": "Mature",
             "mecha": "Mecha",
             "mystery": "Mystery",
             "psychological": "Psychological",
@@ -122,9 +134,17 @@ class ScribbleHubSource(Source):
             "tragedy": "Tragedy",
         }
 
-    async def fetch_url(self, url: str, params: dict | None = None):
-        response = await self._fetch(url)
-        return BeautifulSoup(response.text, "html.parser")
+    async def fetch_url(self, url: str, params: dict | None = None) -> BeautifulSoup:
+        response = await self._fetch(url, params=params)
+        # _fetch flags Cloudflare (403/429) on self._blocked before returning.
+        # Raising on those would take the callers' `error is not None` branch
+        # ahead of their `blocked` branch, hiding the "blocked by anti-bot
+        # protection" message behind a generic connection warning — so a
+        # flagged 403/429 is returned as-is while every other status raises.
+        blocked = self._blocked and response.status_code in (403, 429)
+        if not blocked:
+            response.raise_for_status()
+        return await parse_html(response.text)
 
     def parse_slug(self, url: str) -> str | None:
         o = urllib.parse.urlparse(url)
@@ -132,7 +152,7 @@ class ScribbleHubSource(Source):
             parts = o.path.split("/")
             if "series" in parts:
                 idx = parts.index("series")
-                slug = "/".join(parts[idx + 1:]).rstrip("/")
+                slug = "/".join(parts[idx + 1 :]).rstrip("/")
                 return slug
 
     def qualify_slug(self, slug: str) -> str:
@@ -152,22 +172,26 @@ class ScribbleHubSource(Source):
             cover = self._absolutize(cover)
             author_tag = row.select_one(".search_stats span[title='Author'] .a_un_st a")
             author = author_tag.text.strip() if author_tag else "Unknown"
-            results.append({
-                "title": title_tag.text.strip(),
-                "author": author,
-                "slug": slug or "",
-                "latest": "",
-                "cover": cover,
-            })
+            results.append(
+                {
+                    "title": title_tag.text.strip(),
+                    "author": author,
+                    "slug": slug or "",
+                    "latest": "",
+                    "cover": cover,
+                }
+            )
         return results
 
     async def search(self, query: str, page: int = 1) -> tuple[list[dict], int]:
-        url = f"https://www.scribblehub.com/series-finder/?sf=1&sh={query}&pg={page}"
-        soup = await self.fetch_url(url)
+        soup = await self.fetch_url(
+            "https://www.scribblehub.com/series-finder/",
+            params={"sf": 1, "sh": query, "pg": page},
+        )
         novels = self.extract_novel_rows(soup)
-        total_pages = 50  # generous upper bound
+        total_pages = _MAX_SEARCH_PAGES
         if not novels:
-            total_pages = page - 1  # no results means went past the last page
+            total_pages = max(1, page - 1)  # empty page → went past the last real page
         return novels, total_pages
 
     async def read_chapter(self, url: str) -> list[str] | None:
@@ -191,7 +215,6 @@ class ScribbleHubSource(Source):
         soup = await self.fetch_url(url)
         return self.extract_novel_rows(soup)
 
-
     async def fetch_chapters(self, slug: str) -> list[dict]:
         url = f"https://www.scribblehub.com/series/{slug}/"
         soup = await self.fetch_url(url)
@@ -200,23 +223,27 @@ class ScribbleHubSource(Source):
             return []
         mypostid = mypostid_input.get("value", "")
         ajax_url = "https://www.scribblehub.com/wp-admin/admin-ajax.php"
-        response = await self._fetch(ajax_url, data={
-            "action": "wi_getreleases_pagination",
-            "pagenum": -1,
-            "mypostid": mypostid,
-        })
-        chapter_soup = BeautifulSoup(response.text, "html.parser")
+        response = await self._fetch(
+            ajax_url,
+            data={
+                "action": "wi_getreleases_pagination",
+                "pagenum": -1,
+                "mypostid": mypostid,
+            },
+        )
+        chapter_soup = await parse_html(response.text)
         chapters = []
         links = chapter_soup.select(".toc_ol a.toc_a")
         for i, a in enumerate(reversed(links), 1):
             href = str(a.get("href", ""))
-            if href and not href.startswith("http"):
-                href = "https://www.scribblehub.com" + href
-            chapters.append({
-                "num": i,
-                "title": a.text.strip(),
-                "url": href,
-            })
+            href = self._absolutize(href)
+            chapters.append(
+                {
+                    "num": i,
+                    "title": a.text.strip(),
+                    "url": href,
+                }
+            )
         return chapters
 
     def novel_url(self, slug: str) -> str:
@@ -228,5 +255,9 @@ class ScribbleHubSource(Source):
         author_el = soup.select_one(".fic_author a") or soup.select_one(".author a")
         author = author_el.get_text(strip=True) if author_el else "Unknown"
         desc_el = soup.select_one(".wi_fic_desc") or soup.select_one(".description")
-        description = desc_el.get_text("\n\n", strip=True) if desc_el else "No description available."
+        description = (
+            desc_el.get_text("\n\n", strip=True)
+            if desc_el
+            else "No description available."
+        )
         return {"author": author, "description": description}

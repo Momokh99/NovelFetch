@@ -1,9 +1,9 @@
 from kivy.clock import Clock
 from kivymd.app import MDApp
-from kivymd.uix.label import MDLabel
 from kivymd.uix.screen import MDScreen
 
 from core.downloader import download as _download_novel
+from core.http_client import describe_error
 from gui.async_runner import async_loop
 from gui.screens.utils import _snack
 
@@ -36,8 +36,17 @@ class DownloadProgressScreen(MDScreen):
         self.status_label = self.ids.status_label
         self.cancel_btn = self.ids.cancel_btn
 
-    def load(self, chapters=None, slug="", source=None, title="",
-             total=None, translate=False, lang="", **kwargs):
+    def load(
+        self,
+        chapters=None,
+        slug="",
+        source=None,
+        title="",
+        total=None,
+        translate=False,
+        lang="",
+        **kwargs,
+    ):
         self.chapters = chapters or []
         self.slug = slug
         self.source = source
@@ -69,16 +78,21 @@ class DownloadProgressScreen(MDScreen):
 
         async def coro():
             return await _download_novel(
-                self.source, self.slug, self.chapters, self._title,
-                total=self._total, progress_cb=self._on_progress,
-                translate=self._translate, lang=self._lang)
+                self.source,
+                self.slug,
+                self.chapters,
+                self._title,
+                total=self._total,
+                progress_cb=self._on_progress,
+                translate=self._translate,
+                lang=self._lang,
+            )
 
         self._future = async_loop.run(coro(), self._on_done)
 
     def _on_progress(self, done, saved):
         # Runs on the async loop thread — hop to Kivy thread before UI updates.
-        Clock.schedule_once(
-            lambda dt: self._set_progress(done, saved))
+        Clock.schedule_once(lambda dt: self._set_progress(done, saved))
 
     def _set_progress(self, done, saved):
         self.progress_bar.value = min(done, self.progress_bar.max)
@@ -91,10 +105,15 @@ class DownloadProgressScreen(MDScreen):
         self._done = True
         self.cancel_btn.disabled = True
         if error is not None:
-            self._notify("Download failed.")
+            self._notify(describe_error(error, "Download failed"))
         else:
             saved, failed = result
-            if saved:
+            if saved and failed:
+                # Partial failure: failures used to be invisible whenever
+                # anything succeeded, so a chapter that never landed looked
+                # like a completed download.
+                self._notify(f"Saved {saved} of {saved + failed} — {failed} failed.")
+            elif saved:
                 self._notify(f"Saved {saved} chapters to library.")
             elif failed:
                 self._notify("Download failed. Check your connection.")

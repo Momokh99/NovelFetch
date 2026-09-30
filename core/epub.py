@@ -1,4 +1,5 @@
 import asyncio
+import html as _html
 import os
 import xml.etree.ElementTree as ET
 import zipfile
@@ -6,13 +7,7 @@ import zipfile
 from ebooklib import epub
 
 from core.http_client import get_client
-
-
-def _chapter_sort_key(fname):
-    import re
-
-    nums = re.findall(r"\d+", fname)
-    return int(nums[0]) if nums else 0
+from core.library import _chapter_sort_key
 
 
 def _validate_epub(path):
@@ -92,6 +87,8 @@ async def _export_epub(slug, source=None, chapters=None):
         except Exception:
             pass
     book.add_author(author)
+    if cover_data:
+        book.set_cover("cover-image.jpg", cover_data)
 
     # Chapters: either in-memory list or read from disk
     if chapters is not None:
@@ -117,13 +114,12 @@ async def _export_epub(slug, source=None, chapters=None):
 
     epub_chapters = []
     for i, (fname, content) in enumerate(txt_list):
-        ch_title = os.path.basename(fname).replace(".txt", "").replace("_", " ").title()
+        ch_title = (
+            os.path.splitext(os.path.basename(fname))[0].replace("_", " ").title()
+        )
         paragraphs = content.split("\n\n")
-        html = f"<h1>{ch_title}</h1>"
-        for p in paragraphs:
-            p = p.strip()
-            if p:
-                html += f"<p>{p}</p>"
+        parts = [f"<p>{_html.escape(p.strip())}</p>" for p in paragraphs if p.strip()]
+        html = f"<h1>{_html.escape(ch_title)}</h1>" + "".join(parts)
         ch = epub.EpubHtml(
             title=ch_title, file_name=f"chap_{i + 1:04d}.xhtml", lang="en"
         )

@@ -29,6 +29,7 @@ def test_layout_saved_and_loaded():
 
 def test_home_layout_labels():
     from gui.screens.settings_tab import HOME_LAYOUTS, _home_layout_label
+
     assert len(HOME_LAYOUTS) == 2
     assert _home_layout_label("A") == "Cards"
     assert _home_layout_label("B") == "List"
@@ -37,8 +38,16 @@ def test_home_layout_labels():
 
 def test_read_indicator_labels():
     from gui.screens.settings_tab import READ_INDICATORS, _read_indicator_label
+
     assert [k for k, _ in READ_INDICATORS] == [
-        "off", "text", "linear", "percentage", "blocks", "dots", "wave"]
+        "off",
+        "text",
+        "linear",
+        "percentage",
+        "blocks",
+        "dots",
+        "wave",
+    ]
     assert _read_indicator_label("off") == "Off"
     assert _read_indicator_label("blocks") == "Segmented blocks"
     assert _read_indicator_label("zz") == "zz"
@@ -46,6 +55,7 @@ def test_read_indicator_labels():
 
 def test_grid_size_labels():
     from gui.screens.settings_tab import CARD_GRID_SIZES, _grid_size_label
+
     assert [k for k, _ in CARD_GRID_SIZES] == ["large", "medium", "small"]
     assert _grid_size_label("large") == "Large (1 per row)"
     assert _grid_size_label("medium") == "Medium (2 per row)"
@@ -53,13 +63,15 @@ def test_grid_size_labels():
 
 
 def test_defaults_when_corrupt():
-    open(app_settings._path(), "w").write("{not json")
+    with open(app_settings._path(), "w") as f:
+        f.write("{not json")
     s = app_settings.load_settings()
     assert s == dict(app_settings._DEFAULTS)
 
 
 def test_defaults_when_empty_file():
-    open(app_settings._path(), "w").write("")
+    with open(app_settings._path(), "w") as f:
+        f.write("")
     s = app_settings.load_settings()
     assert s == dict(app_settings._DEFAULTS)
 
@@ -95,7 +107,8 @@ def test_unknown_keys_preserved():
 
 def test_file_content_is_valid_json():
     app_settings.save_settings(reader_font_size=20)
-    data = json.loads(open(app_settings._path()).read())
+    with open(app_settings._path()) as f:
+        data = json.loads(f.read())
     assert data["reader_font_size"] == 20
     assert "theme_style" in data
 

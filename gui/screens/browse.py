@@ -10,8 +10,9 @@ from kivymd.uix.dialog import (
 from kivymd.uix.list import MDList, MDListItem, MDListItemHeadlineText
 from kivymd.uix.progressindicator import MDLinearProgressIndicator
 
+from core.http_client import describe_error
 from gui.async_runner import async_loop
-from gui.screens.utils import _snack
+from gui.screens.utils import FETCH_TIMEOUT, _snack
 
 BROWSE = {
     "hot": "Hot novels",
@@ -19,6 +20,7 @@ BROWSE = {
     "popular": "Most popular",
     "completed": "Completed",
 }
+
 
 class BrowseSection(MDBoxLayout):
     """The discovery block shared by Home and Search: browse rows + genres."""
@@ -31,16 +33,26 @@ class BrowseSection(MDBoxLayout):
         self.browse_list = MDList()
         for key, label in BROWSE.items():
             # k=key freezes the loop variable (closure trap)
-            self.browse_list.add_widget(MDListItem(MDListItemHeadlineText(
-                text=label,
-            ), on_release=lambda *_, k=key: self.browse(k)))
-        self.browse_list.add_widget(MDListItem(MDListItemHeadlineText(
-            text="Genres",
-        ), on_release=lambda *_: self.open_genres()))
+            self.browse_list.add_widget(
+                MDListItem(
+                    MDListItemHeadlineText(
+                        text=label,
+                    ),
+                    on_release=lambda *_, k=key: self.browse(k),
+                )
+            )
+        self.browse_list.add_widget(
+            MDListItem(
+                MDListItemHeadlineText(
+                    text="Genres",
+                ),
+                on_release=lambda *_: self.open_genres(),
+            )
+        )
         self.add_widget(self.browse_list)
         self.progress_bar = MDLinearProgressIndicator(
-            indeterminate=True, opacity=0,
-            size_hint_y=None, height=dp(4))
+            indeterminate=True, opacity=0, size_hint_y=None, height=dp(4)
+        )
         self.add_widget(self.progress_bar)
 
     # ---------- browse ----------
@@ -59,11 +71,12 @@ class BrowseSection(MDBoxLayout):
 
         self._set_busy(True)
         async_loop.run(
-            coro(), lambda res, err, k=key: self._on_done(res, err, BROWSE[k]),
-            timeout=30)
+            coro(),
+            lambda res, err, k=key: self._on_done(res, err, BROWSE[k]),
+            timeout=FETCH_TIMEOUT,
+        )
 
     # ---------- genres ----------
-
 
     def open_genres(self):
         if self._busy:
@@ -75,9 +88,14 @@ class BrowseSection(MDBoxLayout):
 
         rows = MDList()
         for slug, label in source.genres.items():
-            rows.add_widget(MDListItem(MDListItemHeadlineText(
-                text=label,
-            ), on_release=lambda *_, g=slug: self.browse_genre(g)))
+            rows.add_widget(
+                MDListItem(
+                    MDListItemHeadlineText(
+                        text=label,
+                    ),
+                    on_release=lambda *_, g=slug: self.browse_genre(g),
+                )
+            )
         # Instance ref: a dialog with no strong ref can be GC'd mid-open.
         self._genre_dialog = MDDialog(
             MDDialogHeadlineText(
@@ -102,16 +120,19 @@ class BrowseSection(MDBoxLayout):
             return await source.browse_genre(genre_slug)
 
         self._set_busy(True)
-        async_loop.run(coro(), lambda res, err: self._on_done(res, err, "Genres"),
-                       timeout=30)
+        async_loop.run(
+            coro(),
+            lambda res, err: self._on_done(res, err, "Genres"),
+            timeout=FETCH_TIMEOUT,
+        )
 
-# ---------- result routing ----------
+    # ---------- result routing ----------
 
     def _on_done(self, novels, error, title):
         self._set_busy(False)
         source = MDApp.get_running_app().current_source
         if error is not None:
-            self._notify("Failed to fetch novels. Check your connection.")
+            self._notify(describe_error(error, "Failed to fetch novels"))
         elif getattr(source, "blocked", False):
             self._notify(f"{source.label} is blocked by anti-bot protection.")
         elif not novels:
@@ -128,7 +149,7 @@ class BrowseSection(MDBoxLayout):
 
     def _set_busy(self, busy):
         self._busy = busy
-        self.browse_list.disabled = busy   # rows ignore taps while fetching
+        self.browse_list.disabled = busy  # rows ignore taps while fetching
         self.progress_bar.opacity = 1 if busy else 0
 
     def _notify(self, text):

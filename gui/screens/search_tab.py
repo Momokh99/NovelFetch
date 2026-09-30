@@ -1,19 +1,11 @@
 from kivy.clock import Clock
-from kivy.metrics import dp
-from kivy.uix.image import AsyncImage
-from kivy.uix.relativelayout import RelativeLayout
 from kivymd.app import MDApp
-from kivymd.uix.boxlayout import MDBoxLayout
-from kivymd.uix.button import MDIconButton
-from kivymd.uix.card import MDCard
-from kivymd.uix.label import MDLabel
 from kivymd.uix.screen import MDScreen
 
+from core.http_client import describe_error
 from gui.async_runner import async_loop
-from gui.screens import theme, utils
-from gui.screens.browse import BrowseSection
+from gui.screens import utils
 from gui.screens.source_picker import open_source_picker
-from gui.screens.utils import _snack
 
 
 class SearchTab(MDScreen):
@@ -103,10 +95,10 @@ class SearchTab(MDScreen):
             return
         source = MDApp.get_running_app().current_source
         if source is None:
-            _snack("No source selected.")
+            utils._snack("No source selected.")
             return
         if not source.search_supported:
-            _snack("Search is not supported for this source.")
+            utils._snack("Search is not supported for this source.")
             return
 
         self._seq += 1
@@ -133,8 +125,10 @@ class SearchTab(MDScreen):
         self.results_box.disabled = False
         self.results_list.clear_widgets()
         async_loop.run(
-            coro(), lambda res, err, s=seq: self._on_first_page(res, err, s),
-            timeout=30)
+            coro(),
+            lambda res, err, s=seq: self._on_first_page(res, err, s),
+            timeout=utils.FETCH_TIMEOUT,
+        )
 
     def _on_first_page(self, result, error, seq):
         if seq != self._seq:
@@ -146,24 +140,25 @@ class SearchTab(MDScreen):
         blocked = getattr(source, "blocked", False)
         if error is not None:
             self._clear_results()
-            _snack("Search failed. Check your connection.")
+            utils._snack(describe_error(error, "Search failed"))
         elif blocked:
             self._clear_results()
-            _snack(f"{source.label} is blocked by anti-bot protection.")
-        elif not result:
-            self.result_header.text = ""
-            self.result_state_label.text = f"No results for '{self._query}'"
-            self.page_footer.text = ""
-            self.results_list.clear_widgets()
-            self.results_box.opacity = 1
-            self.results_box.disabled = False
+            utils._snack(f"{source.label} is blocked by anti-bot protection.")
         else:
             novels, pages = result
             self._pages = pages or 1
-            self.result_header.text = f"{len(novels)} result(s) for '{self._query}'"
-            self.result_state_label.text = ""
-            self._update_footer()
-            self._show_results(novels)
+            if not novels:
+                self.result_header.text = ""
+                self.result_state_label.text = f"No results for '{self._query}'"
+                self.page_footer.text = ""
+                self.results_list.clear_widgets()
+                self.results_box.opacity = 1
+                self.results_box.disabled = False
+            else:
+                self.result_header.text = f"{len(novels)} result(s) for '{self._query}'"
+                self.result_state_label.text = ""
+                self._update_footer()
+                self._show_results(novels)
 
     def _load_more(self):
         if self._load_more_busy or self._busy:
@@ -173,8 +168,11 @@ class SearchTab(MDScreen):
         source = MDApp.get_running_app().current_source
         # Pin pagination to the source the query ran on: switching sources
         # mid-results must never fetch page 2 of the old query from a new one.
-        if source is None or not source.search_supported \
-                or source.name != self._query_source_name:
+        if (
+            source is None
+            or not source.search_supported
+            or source.name != self._query_source_name
+        ):
             return
         next_page = self._page + 1
         self._seq += 1
@@ -187,15 +185,22 @@ class SearchTab(MDScreen):
         self._load_more_busy = True
         self.search_progress.opacity = 1
         self.page_footer.text = f"Page {self._page} of {self._pages} · Loading more…"
-        async_loop.run(coro(), lambda res, err, s=seq: self._on_more_done(res, err, s),
-                       timeout=30)
+        async_loop.run(
+            coro(),
+            lambda res, err, s=seq: self._on_more_done(res, err, s),
+            timeout=utils.FETCH_TIMEOUT,
+        )
 
     def _on_more_done(self, result, error, seq):
         if seq != self._seq:
             return
         self._load_more_busy = False
         self.search_progress.opacity = 0
-        if error is not None or not result:
+        if error is not None:
+            utils._snack(describe_error(error, "Could not load more results"))
+            self._update_footer()
+            return
+        if not result:
             self._update_footer()
             return
         novels, pages = result
@@ -225,47 +230,8 @@ class SearchTab(MDScreen):
         self.results_box.disabled = False
 
     def _make_row(self, novel):
-        row = MDCard(
-            orientation="horizontal",
-            size_hint_y=None,
-            height=dp(120),
-            padding=theme.CARD_PAD, spacing=theme.CARD_GAP,
-        )
-        cover = novel.get("cover", "") or ""
-        img = AsyncImage(
-            source="",
-            size_hint=(None, 1),
-            width=dp(70),
-            keep_ratio=True,
-            allow_stretch=True,
-        )
-        if cover:
-            utils.set_image_url(img, cover)
-
         source = MDApp.get_running_app().current_source
-        qualified = source.qualify_slug(novel["slug"]) if source else ""
-        registered = bool(qualified and utils._read_meta(qualified))
-
-        if registered:
-            row.md_bg_color = theme.library_highlight()
-
-        texts = MDBoxLayout(orientation="vertical", size_hint_y=None, adaptive_height=True, spacing="2dp",
-                            pos_hint={"center_x": 0.5, "center_y": 0.5})
-        texts.add_widget(MDLabel(
-            text=novel["title"], bold=True,
-            font_style="Title", role="small", size_hint_y=None, height="28dp",
-            shorten=True, shorten_from="right", max_lines=1))
-        sub = novel.get("author", "") or ""
-        if novel.get("latest"):
-            sub += f"  ·  {novel['latest']}"
-        texts.add_widget(MDLabel(
-            text=sub, theme_text_color="Secondary",
-            font_style="Label", role="large", size_hint_y=None, height="22dp"))
-        texts_rl = RelativeLayout(size_hint=(1, 1))
-        texts_rl.add_widget(texts)
-        row.add_widget(img)
-        row.add_widget(texts_rl)
-        row.add_widget(utils._add_to_library_icon(novel, source))
+        row = utils.make_novel_card(novel, source, title_role="small")
         row.on_release = lambda n=novel: self._open(n)
         return row
 
@@ -273,8 +239,10 @@ class SearchTab(MDScreen):
         # Tapping a result drills into the chapter list (full screen, as before).
         source = MDApp.get_running_app().current_source
         utils._open_chapters_for(
-            novel, source,
-            set_loading=lambda s: setattr(self.results_list, "disabled", s))
+            novel,
+            source,
+            set_loading=lambda s: setattr(self.results_list, "disabled", s),
+        )
 
     def _clear_results(self):
         self.results_list.clear_widgets()

@@ -7,7 +7,7 @@ import pytest
 from gui.async_runner import AsyncLoop
 
 
-@pytest.fixture()
+@pytest.fixture
 def loop():
     al = AsyncLoop()
     al.start()
@@ -67,4 +67,5 @@ def test_stop_is_idempotent():
 
 def test_singleton_exists():
     from gui.async_runner import async_loop
+
     assert isinstance(async_loop, AsyncLoop)

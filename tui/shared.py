@@ -52,6 +52,7 @@ class CustomHeader(Horizontal):
         if src:
             self.query_one("#header-source", Static).update(f"Source: {src.label} ▼")
 
+
 class LanguagePicker(Screen):
     BINDINGS = [Binding("escape", "dismiss_pop", "Back")]
 
@@ -89,7 +90,7 @@ class LanguagePicker(Screen):
 class JumpDialog(Screen):
     BINDINGS = [Binding("escape", "dismiss_pop", "Back")]
 
-    def __init__(self, chapters , callback):
+    def __init__(self, chapters, callback):
         super().__init__()
         self.chapters = chapters
         self.callback = callback
@@ -101,12 +102,11 @@ class JumpDialog(Screen):
     async def on_input_submitted(self, event):
         try:
             num = int(event.value)
-            if 1 <= num <=len(self.chapters):
-                await self.callback(num-1)
+            if 1 <= num <= len(self.chapters):
+                await self.callback(num - 1)
                 self.app.pop_screen()
         except ValueError:
             pass
 
     def action_dismiss_pop(self):
         self.app.pop_screen()
-

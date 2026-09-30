@@ -1,8 +1,6 @@
 """Tests for reader.py pure logic — font clamping, control-char stripper,
 greedy RTL line wrapping, and the rewrite toggle state machine."""
 
-import re
-
 from gui.screens.reader import (
     _CTRL_CHARS_RE,
     _greedy_wrap,
@@ -13,6 +11,7 @@ from gui.screens.reader import (
 )
 
 # ---- font clamping ----
+
 
 def test_font_clamping():
     def clamp_font(size, delta):
@@ -38,6 +37,7 @@ def test_font_all_values_in_range():
 
 
 # ---- control-char stripper ----
+
 
 def test_strip_control_chars_removes_rtl_marks():
     text = "مرحبا\u200f بالعالم"
@@ -101,9 +101,19 @@ def test_ctrl_chars_regex_covers_all_targets():
     invisible_marks = [
         "\u200e",  # LTR mark
         "\u200f",  # RTL mark
-        "\u202a", "\u202b", "\u202c", "\u202d", "\u202e",  # embedding
-        "\u2066", "\u2067", "\u2068", "\u2069",  # isolate
-        "\u206a", "\u206b", "\u206c", "\u206d",  # bidi controls
+        "\u202a",
+        "\u202b",
+        "\u202c",
+        "\u202d",
+        "\u202e",  # embedding
+        "\u2066",
+        "\u2067",
+        "\u2068",
+        "\u2069",  # isolate
+        "\u206a",
+        "\u206b",
+        "\u206c",
+        "\u206d",  # bidi controls
         "\ufeff",  # BOM
         "\u061c",  # Arabic letter mark
     ]
@@ -113,8 +123,10 @@ def test_ctrl_chars_regex_covers_all_targets():
 
 # ---- shape_arabic_text integration ----
 
+
 def test_shape_arabic_text_strips_invisible_marks():
     from gui.screens.reader import _shape_arabic_text
+
     text = "مرحبا\u200f بالعالم"
     result = _shape_arabic_text(text)
     assert "\u200f" not in result
@@ -123,26 +135,31 @@ def test_shape_arabic_text_strips_invisible_marks():
 
 def test_shape_arabic_text_fallback():
     """When arabic_reshaper is not installed, returns text unchanged."""
-    try:
-        import arabic_reshaper
-        has_shaping = True
-    except ImportError:
-        has_shaping = False
+    import importlib.util
 
-    if not has_shaping:
-        from gui.screens.reader import _shape_arabic_text
-        assert _shape_arabic_text("hello") == "hello"
-        assert _shape_arabic_text("") == ""
+    import pytest
+
+    if importlib.util.find_spec("arabic_reshaper") is not None:
+        pytest.skip("arabic_reshaper installed; fallback not reachable")
+
+    from gui.screens.reader import _shape_arabic_text
+
+    assert _shape_arabic_text("hello") == "hello"
+    assert _shape_arabic_text("") == ""
 
 
 # ---- toggle translate state machine ----
 
+
 def test_toggle_showing_translated_reverts():
     """translated_text set → revert."""
     state = {
-        "_busy": False, "_translated_text": "tr text",
-        "_offline_en_path": "/en.txt", "_offline_tr_path": "/tr_ar.txt",
+        "_busy": False,
+        "_translated_text": "tr text",
+        "_offline_en_path": "/en.txt",
+        "_offline_tr_path": "/tr_ar.txt",
     }
+
     def toggle(s):
         if s["_busy"]:
             return None
@@ -153,15 +170,19 @@ def test_toggle_showing_translated_reverts():
         elif s["_offline_en_path"]:
             return "pick_language"
         return "pick_language"
+
     assert toggle(state) == "revert"
 
 
 def test_toggle_both_offline_copies_swaps():
     """No translated text but both offline files exist → swap."""
     state = {
-        "_busy": False, "_translated_text": "",
-        "_offline_en_path": "/en.txt", "_offline_tr_path": "/tr_ar.txt",
+        "_busy": False,
+        "_translated_text": "",
+        "_offline_en_path": "/en.txt",
+        "_offline_tr_path": "/tr_ar.txt",
     }
+
     def toggle(s):
         if s["_busy"]:
             return None
@@ -172,15 +193,19 @@ def test_toggle_both_offline_copies_swaps():
         elif s["_offline_en_path"]:
             return "pick_language"
         return "pick_language"
+
     assert toggle(state) == "swap_offline"
 
 
 def test_toggle_only_en_file_opens_picker():
     """Only English file on disk, no translated → language picker."""
     state = {
-        "_busy": False, "_translated_text": "",
-        "_offline_en_path": "/en.txt", "_offline_tr_path": "",
+        "_busy": False,
+        "_translated_text": "",
+        "_offline_en_path": "/en.txt",
+        "_offline_tr_path": "",
     }
+
     def toggle(s):
         if s["_busy"]:
             return None
@@ -191,15 +216,19 @@ def test_toggle_only_en_file_opens_picker():
         elif s["_offline_en_path"]:
             return "pick_language"
         return "pick_language"
+
     assert toggle(state) == "pick_language"
 
 
 def test_toggle_no_offline_files_opens_picker():
     """No offline copies at all → language picker."""
     state = {
-        "_busy": False, "_translated_text": "",
-        "_offline_en_path": "", "_offline_tr_path": "",
+        "_busy": False,
+        "_translated_text": "",
+        "_offline_en_path": "",
+        "_offline_tr_path": "",
     }
+
     def toggle(s):
         if s["_busy"]:
             return None
@@ -210,15 +239,23 @@ def test_toggle_no_offline_files_opens_picker():
         elif s["_offline_en_path"]:
             return "pick_language"
         return "pick_language"
+
     assert toggle(state) == "pick_language"
 
 
 def test_toggle_busy_blocks_all():
-    state = {"_busy": True, "_translated_text": "", "_offline_en_path": "", "_offline_tr_path": ""}
+    state = {
+        "_busy": True,
+        "_translated_text": "",
+        "_offline_en_path": "",
+        "_offline_tr_path": "",
+    }
+
     def toggle(s):
         if s["_busy"]:
             return None
         return "should_not_reach"
+
     assert toggle(state) is None
 
 
@@ -254,6 +291,7 @@ def test_swap_offline_roundtrip(tmp_path):
 
 
 # ---- load busy reset logic ----
+
 
 def test_load_resets_busy_flag():
     """Simulate load() resetting a stuck busy state."""
@@ -302,6 +340,7 @@ def test_load_chapter_allows_valid():
 
 # ---- greedy RTL line wrapping ----
 
+
 def test_greedy_wrap_single_line_fits():
     widths = [10, 10, 10]
     lines = _greedy_wrap(widths, space_w=5, avail=100)
@@ -335,6 +374,7 @@ def test_greedy_wrap_empty_input():
 
 def test_greedy_wrap_never_exceeds_avail_unless_single_word():
     import random
+
     rng = random.Random(42)
     widths = [rng.randint(1, 60) for _ in range(200)]
     avail, space_w = 80, 4
@@ -358,9 +398,11 @@ def test_greedy_wrap_preserves_word_order():
 
 # ---- RTL paragraph wrapping (logical order, pre-bidi) ----
 
+
 def _fixed_measure(width_map):
     def measure(word):
         return width_map.get(word, 10)
+
     return measure
 
 
@@ -374,10 +416,10 @@ def test_wrap_rtl_lines_splits_long_paragraph():
     # Each word 30px + 5px space -> two words per 70px line.
     text = "واحد اثنين ثلاثة اربعة خمسة"
     lines = _wrap_rtl_lines(
-        text, _fixed_measure({w: 30 for w in text.split()}),
-        space_w=5, avail=70)
+        text, _fixed_measure(dict.fromkeys(text.split(), 30)), space_w=5, avail=70
+    )
     assert len(lines) == 3
-    assert all(len(l.split()) <= 2 for l in lines)
+    assert all(len(ln.split()) <= 2 for ln in lines)
 
 
 def test_wrap_rtl_lines_preserves_reading_order():
@@ -391,14 +433,16 @@ def test_wrap_rtl_lines_keeps_empty_paragraphs():
     text = "اول\n\nثاني"
     lines = _wrap_rtl_lines(text, _fixed_measure({}), space_w=5, avail=100)
     assert "" in lines
-    assert "اول" in lines and "ثاني" in lines
+    assert "اول" in lines
+    assert "ثاني" in lines
 
 
 def test_wrap_rtl_lines_oversized_word_stays_whole():
     # A word wider than avail must not be split mid-word.
     text = "صغير ضخضخضخضخضخضخ صغير"
     lines = _wrap_rtl_lines(
-        text, _fixed_measure({"ضخضخضخضخضخضخ": 500}), space_w=5, avail=50)
+        text, _fixed_measure({"ضخضخضخضخضخضخ": 500}), space_w=5, avail=50
+    )
     flat = " ".join(lines).split()
     assert "ضخضخضخضخضخضخ" in flat  # intact
 
@@ -415,6 +459,7 @@ def test_wrap_rtl_words_measured_once_per_occurrence():
 
 
 # ---- chunked rendering (GL max-texture-size guard) ----
+
 
 def test_lines_per_chunk_basic_division():
     assert lines_per_chunk(25, cap=2500) == 100

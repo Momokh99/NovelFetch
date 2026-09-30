@@ -3,7 +3,6 @@ persistent, and synced on refresh)."""
 
 import json
 import os
-import sys
 
 import pytest
 from kivy.core.window import Window
@@ -21,6 +20,7 @@ class _SettingsApp(MDApp):
         self.theme_cls.theme_style = "Light"
         self.theme_cls.primary_palette = "Teal"
         from gui.screens.settings_tab import SettingsTab
+
         return SettingsTab()
 
 
@@ -30,17 +30,19 @@ def tab(tmp_path, monkeypatch):
     os.makedirs("novels", exist_ok=True)
     app = _SettingsApp()
     import kivy
+
     kivy.app.App._app_instance = app
     win = app.build()
     Window.add_widget(win)
     win.pos = (0, 0)
     win.size = Window.size
     win._refresh()
-    yield win
+    return win
 
 
 def saved():
-    return json.loads(open("app_settings.json").read()).get("show_continue_reading")
+    with open("app_settings.json") as f:
+        return json.loads(f.read()).get("show_continue_reading")
 
 
 def test_switch_sits_on_right_side_of_row(tab):
@@ -66,9 +68,11 @@ def test_switch_off_toggles_and_persists(tab):
 def test_switch_on_toggles_and_persists(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     os.makedirs("novels", exist_ok=True)
-    json.dump({"show_continue_reading": False}, open("app_settings.json", "w"))
+    with open("app_settings.json", "w") as f:
+        json.dump({"show_continue_reading": False}, f)
     app = _SettingsApp()
     import kivy
+
     kivy.app.App._app_instance = app
     win = app.build()
     Window.add_widget(win)

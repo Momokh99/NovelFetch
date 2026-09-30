@@ -45,6 +45,7 @@ class MockTouch:
 class _HomeApp(MDApp):
     def build(self):
         from gui.screens.home_tab import HomeTab
+
         return HomeTab()
 
 
@@ -55,6 +56,7 @@ def tab(tmp_path, monkeypatch):
     Builder.load_file(os.path.join(APP, "kv/topbar.kv"))
     Builder.load_file(os.path.join(APP, "kv/home_tab.kv"))
     import kivy
+
     app = _HomeApp()
     kivy.app.App._app_instance = app
     win = app.build()
@@ -73,16 +75,17 @@ def _make_novel(slug, chapters, last=None, title=None, tracked=False):
         json.dump(meta, f)
     if last is not None:
         from core.progress import progress
+
         progress.mark_seen(slug, last)
     return {"slug": slug, "title": title or slug, "count": chapters}
 
 
 def _chapters(n=12):
-    return [{"title": f"Chapter {i + 1}", "url": f"https://x/{i}"}
-            for i in range(n)]
+    return [{"title": f"Chapter {i + 1}", "url": f"https://x/{i}"} for i in range(n)]
 
 
 # ---------- _picker_options ----------
+
 
 def test_picker_options_original_section():
     opts = _picker_options(_chapters(12), seen=set(), downloaded=0, lang="ar")
@@ -98,17 +101,18 @@ def test_picker_options_original_section():
 
 
 def test_picker_options_unread_excludes_seen():
-    opts = _picker_options(_chapters(12), seen={0, 1, 2}, downloaded=0,
-                           lang="ar")
+    opts = _picker_options(_chapters(12), seen={0, 1, 2}, downloaded=0, lang="ar")
     unread = [o for o in opts if o["label"].startswith("All unread")]
-    assert unread[0] == {"label": "All unread (9)", "subset": [
-        c for c in _chapters(12) if c not in _chapters(12)[:3]],
-        "translate": False}
+    assert unread[0] == {
+        "label": "All unread (9)",
+        "subset": [c for c in _chapters(12) if c not in _chapters(12)[:3]],
+        "translate": False,
+    }
 
 
 def test_picker_options_remaining_skips_downloaded():
     opts = _picker_options(_chapters(10), seen=set(), downloaded=4, lang="ar")
-    assert "Original" in [o["label"] for o in opts]   # remaining = 6 > 0
+    assert "Original" in [o["label"] for o in opts]  # remaining = 6 > 0
     next25 = [o for o in opts if o["label"] == "Next 6"][0]
     assert len(next25["subset"]) == 6
     all_opt = [o for o in opts if o["label"] == "All (10)"][0]
@@ -118,7 +122,7 @@ def test_picker_options_remaining_skips_downloaded():
 def test_picker_options_fully_downloaded_no_original():
     opts = _picker_options(_chapters(5), seen=set(), downloaded=5, lang="ar")
     labels = [o["label"] for o in opts]
-    assert "Original" not in labels          # no remaining chapters
+    assert "Original" not in labels  # no remaining chapters
     assert "Translated (Arabic)" in labels
 
 
@@ -144,10 +148,10 @@ def test_picker_options_fresh_novel_default_counts():
 
 # ---------- selection state ----------
 
+
 def test_enter_select_sets_mode_and_selects(tab):
     _make_novel("a:sel1", chapters=5)
-    tab._build_library([
-        {"slug": "a:sel1", "title": "sel1", "count": 5}])
+    tab._build_library([{"slug": "a:sel1", "title": "sel1", "count": 5}])
     tab._enter_select("a:sel1")
     assert tab._select_mode is True
     assert tab._selected == {"a:sel1"}
@@ -181,14 +185,18 @@ def test_card_badge_tracks_selection(tab):
 
     tab.content_box.clear_widgets()
     from kivy.uix.widget import Widget
+
     card = Widget()
     card._slug = "a:badge"
     card._sel_badge = FakeBadge()
     tab.content_box.add_widget(card)
+    # Selection refreshes go through the slug→card index, so register the
+    # stub the same way _grid_card/_row_card register real cards.
+    tab._slug_to_card["a:badge"] = card
     assert card._sel_badge.selected is False
     tab._enter_select("a:badge")
     assert card._sel_badge.selected is True
-    tab._toggle_select("a:badge")   # unselect while still in select mode
+    tab._toggle_select("a:badge")  # unselect while still in select mode
     assert card._sel_badge.selected is False
     tab._toggle_select("a:badge")
     assert card._sel_badge.selected is True
@@ -199,18 +207,19 @@ def test_card_badge_tracks_selection(tab):
 def test_card_release_toggles_in_select_mode(tab):
     _make_novel("a:rel", chapters=5)
     tab._build_library([{"slug": "a:rel", "title": "rel", "count": 5}])
-    tab._open_library_novel = lambda *a, **k: None   # count invocations
+    tab._open_library_novel = lambda *a, **k: None  # count invocations
     calls = []
 
     def _spy(slug, title, cover):
         calls.append(slug)
+
     tab._open_library_novel = _spy
     tab._card_release(card=None, slug="a:rel", title="rel", cover="")
-    assert calls == ["a:rel"]                       # normal tap opens
+    assert calls == ["a:rel"]  # normal tap opens
     tab._enter_select("z:other")
     calls.clear()
     tab._card_release(card=None, slug="a:rel", title="rel", cover="")
-    assert calls == []                               # select-mode tap toggles
+    assert calls == []  # select-mode tap toggles
     assert "a:rel" in tab._selected
 
 
@@ -220,7 +229,7 @@ def test_card_release_after_long_press_is_swallowed(tab):
     card = type("C", (), {"_long_fired": True, "_sel_badge": None, "_slug": "a:lp"})
     tab._selected = set()
     tab._card_release(card, "a:lp", "lp", "")
-    assert tab._selected == set()   # release right after a hold: no toggle
+    assert tab._selected == set()  # release right after a hold: no toggle
 
 
 def test_selected_entries_sorted(tab):
@@ -237,6 +246,7 @@ def test_selected_entries_sorted(tab):
 
 # ---------- long-press detection ----------
 
+
 def test_long_press_fires_and_flags_release(tab):
     # The mixin combined with a plain Widget avoids MDCard's ripple FBO, which
     # cannot initialize in the headless test environment.
@@ -251,7 +261,7 @@ def test_long_press_fires_and_flags_release(tab):
     fired = []
     card.on_long_press = lambda: fired.append(1)
     touch = MockTouch(pos=(50, 25))
-    card._lp_touch = touch               # simulate the held touch mid-hold
+    card._lp_touch = touch  # simulate the held touch mid-hold
     card._fire_long(touch)
     assert fired == [1]
     assert card._long_fired is True
@@ -275,11 +285,11 @@ def test_long_press_cancelled_by_movement(tab):
     touch = MockTouch(pos=(50, 25))
     card.on_touch_down(touch)
     assert card._lp_event is not None
-    touch.pos = (90, 25)                 # same touch moved: scroll gesture
+    touch.pos = (90, 25)  # same touch moved: scroll gesture
     card.on_touch_move(touch)
-    assert card._lp_event is None        # long-press cancelled: no orphan timer
+    assert card._lp_event is None  # long-press cancelled: no orphan timer
     assert card._lp_touch is None
-    assert fired == []                   # a cancelled hold never triggers
+    assert fired == []  # a cancelled hold never triggers
     touch.pos = (50, 25)
     for _ in range(2):
         # A cancelled hold must not fire even if the finger returns to the card.
@@ -296,12 +306,13 @@ def test_long_press_ignored_outside_card(tab):
         pass
 
     card = Card(pos=(0, 0), size=(100, 50))
-    touch = MockTouch(pos=(500, 400))   # outside the card
+    touch = MockTouch(pos=(500, 400))  # outside the card
     card.on_touch_down(touch)
     assert card._lp_event is None
 
 
 # ---------- overlay touch pass-through ----------
+
 
 def test_hidden_overlay_lets_touches_fall_through(tab):
     # A full-screen overlay must NOT eat touches while hidden, or the library
@@ -333,20 +344,23 @@ def test_visible_overlay_consumes_touch(tab):
 
 # ---------- batch actions ----------
 
+
 def test_batch_mark_read_sets_last_chapter(tab):
     _make_novel("a:read", chapters=7)
     from core.progress import progress
+
     progress.flush()
     tab._library = [{"slug": "a:read", "title": "read", "count": 7}]
     tab._selected = {"a:read"}
     tab._batch_mark_read()
-    assert progress.get_last("a:read") == 6   # count - 1 (0-based)
+    assert progress.get_last("a:read") == 6  # count - 1 (0-based)
     progress.flush()
 
 
 def test_batch_mark_read_skips_empty_novel(tab):
     _make_novel("a:none", chapters=0)
     from core.progress import progress
+
     tab._library = [{"slug": "a:none", "title": "none", "count": 0}]
     tab._selected = {"a:none"}
     tab._batch_mark_read()
@@ -356,6 +370,7 @@ def test_batch_mark_read_skips_empty_novel(tab):
 def test_batch_mark_unread_removes_history(tab):
     _make_novel("a:unread", chapters=5, last=3)
     from core.progress import progress
+
     progress.flush()
     tab._library = [{"slug": "a:unread", "title": "unread", "count": 5}]
     tab._selected = {"a:unread"}
@@ -366,6 +381,7 @@ def test_batch_mark_unread_removes_history(tab):
 def test_batch_track_and_untrack(tab):
     _make_novel("a:tr", chapters=5)
     from core.progress import progress
+
     progress.track("a:tr", "tr")
     tab._library = [{"slug": "a:tr", "title": "tr", "count": 5}]
     tab._selected = {"a:tr"}
@@ -381,7 +397,8 @@ def test_batch_delete_removes_folder_and_clears_selection(tab):
     tab._selected = {"a:del"}
     tab._select_mode = True
     from unittest import mock
-    with mock.patch("gui.screens.utils._delete_library") as deleter:
+
+    with mock.patch("gui.screens.home_tab._delete_library") as deleter:
         tab._do_batch_delete(mock.Mock())
         assert deleter.call_args_list == [mock.call("a:del")]
     assert tab._selected == set()

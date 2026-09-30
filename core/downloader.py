@@ -16,21 +16,14 @@ callers currently expect.
 
 import asyncio
 import os
-from typing import Optional
 
 from core.library import (
-    chapter_path,
-    delete_library,
-    has_chapters,
-    local_chapters,
-    local_chapter_count,
-    missing_chapters,
     read_meta,
-    scan_library,
-    translated_path,
     write_chapter,
     write_meta,
 )
+
+DOWNLOAD_CONCURRENCY: int = 4
 
 
 async def download(
@@ -78,23 +71,22 @@ async def download(
         *failed* counts chapters that could not be fetched.
     """
     novels_dir = os.path.join(base_dir or os.getcwd(), "novels")
-    total = total or len(chapters)
+    if total is None:
+        total = len(chapters)
     saved = 0
     failed = 0
     done = 0
 
-    sem = asyncio.Semaphore(4)
+    sem = asyncio.Semaphore(DOWNLOAD_CONCURRENCY)
 
     async def _process(ch):
         nonlocal saved, failed, done
         safe_title = ch["title"].replace("/", "-").replace(" ", "_")
         # Determine the file path for this chapter
         if translate:
-            path = os.path.join(novels_dir, qualified_slug,
-                                f"{safe_title}_{lang}.txt")
+            path = os.path.join(novels_dir, qualified_slug, f"{safe_title}_{lang}.txt")
         else:
-            path = os.path.join(novels_dir, qualified_slug,
-                                f"{safe_title}.txt")
+            path = os.path.join(novels_dir, qualified_slug, f"{safe_title}.txt")
 
         # Skip if the chapter file already exists (preserves "already
         # downloaded" behaviour from the former GUI _download_novel).
@@ -117,16 +109,20 @@ async def download(
                         # module-level deep_translator dependency.
                         try:
                             from core.translation import _translate_text as _tt
+
                             translated = _tt(text, target=lang)
-                        except (ImportError, ModuleNotFoundError):
+                        except ImportError:
                             translated = text
                         if not translated:
                             failed += 1
                         else:
-                            os.makedirs(os.path.join(novels_dir, qualified_slug),
-                                        exist_ok=True)
-                            with open(path, "w", encoding="utf-8") as f:
-                                f.write(translated)
+                            write_chapter(
+                                qualified_slug,
+                                ch["title"],
+                                translated,
+                                lang=lang,
+                                base_dir=base_dir,
+                            )
                             saved += 1
                 else:
                     lines = await source.read_chapter(ch["url"])
@@ -134,8 +130,13 @@ async def download(
                         failed += 1
                     else:
                         text = "\n\n".join(lines)
-                        write_chapter(qualified_slug, ch["title"], text,
-                                            lang=None, base_dir=base_dir)
+                        write_chapter(
+                            qualified_slug,
+                            ch["title"],
+                            text,
+                            lang=None,
+                            base_dir=base_dir,
+                        )
                         saved += 1
             except Exception:
                 failed += 1
@@ -148,7 +149,11 @@ async def download(
     # ---- completion: write meta.json + cover ----
     # Build meta
     try:
-        cover = await source.cover_url(qualified_slug.split(":")[-1] if ":" in qualified_slug else qualified_slug)
+        cover = await source.cover_url(
+            qualified_slug.split(":", 1)[-1]
+            if ":" in qualified_slug
+            else qualified_slug
+        )
     except Exception:
         cover = ""
     meta = {"title": title, "cover": cover}

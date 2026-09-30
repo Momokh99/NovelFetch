@@ -5,13 +5,11 @@ saved/failed counts plus progress_cb must stay correct either way."""
 import asyncio
 import os
 
-import pytest
-
 from gui.screens import utils
 
 
 class _FakeSource:
-    """save_chapter() sleeps briefly so overlap is observable, and fails for
+    """read_chapter() sleeps briefly so overlap is observable, and fails for
     one chapter on purpose to exercise the failed-count path."""
 
     name = "fake"
@@ -20,18 +18,14 @@ class _FakeSource:
         self.max_concurrent = 0
         self._inflight = 0
 
-    async def save_chapter(self, url, title, slug):
+    async def read_chapter(self, url):
         self._inflight += 1
         self.max_concurrent = max(self.max_concurrent, self._inflight)
         try:
             await asyncio.sleep(0.05)
-            if title == "Chapter 3":
-                return False
-            path = os.path.join("novels", slug, f"{title}.txt")
-            os.makedirs(os.path.dirname(path), exist_ok=True)
-            with open(path, "w") as f:
-                f.write("x")
-            return True
+            if url.endswith("/3"):
+                return None
+            return ["text"]
         finally:
             self._inflight -= 1
 
@@ -40,15 +34,18 @@ class _FakeSource:
 
 
 def _chapters(n):
-    return [{"num": i, "title": f"Chapter {i}", "url": f"http://x/{i}"}
-            for i in range(1, n + 1)]
+    return [
+        {"num": i, "title": f"Chapter {i}", "url": f"http://x/{i}"}
+        for i in range(1, n + 1)
+    ]
 
 
 def test_download_novel_runs_chapters_concurrently(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     source = _FakeSource()
     saved, failed = asyncio.run(
-        utils._download_novel(source, "fake:demo", _chapters(8), "Demo"))
+        utils._download_novel(source, "fake:demo", _chapters(8), "Demo")
+    )
 
     assert saved == 7
     assert failed == 1
@@ -62,9 +59,15 @@ def test_download_novel_progress_cb_reaches_total(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     source = _FakeSource()
     calls = []
-    asyncio.run(utils._download_novel(
-        source, "fake:demo2", _chapters(5), "Demo2",
-        progress_cb=lambda done, saved: calls.append((done, saved))))
+    asyncio.run(
+        utils._download_novel(
+            source,
+            "fake:demo2",
+            _chapters(5),
+            "Demo2",
+            progress_cb=lambda done, saved: calls.append((done, saved)),
+        )
+    )
 
     assert len(calls) == 5
     # done values are a permutation-free count of completions: the final
@@ -83,7 +86,8 @@ def test_download_novel_skips_already_downloaded(tmp_path, monkeypatch):
 
     source = _FakeSource()
     saved, failed = asyncio.run(
-        utils._download_novel(source, slug, _chapters(3), "Demo3"))
+        utils._download_novel(source, slug, _chapters(3), "Demo3")
+    )
 
     # Chapter 1 already exists -> skipped (not re-saved, not failed);
     # chapter 3 is the fake-source's forced failure; chapter 2 saves.

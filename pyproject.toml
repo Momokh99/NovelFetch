@@ -17,6 +17,9 @@ authors = [
 dependencies = [
     "httpx>=0.28.0",
     "beautifulsoup4>=4.14.0",
+    # Faster HTML parsing than the built-in html.parser (core.http_client
+    # falls back to html.parser when it is unavailable, e.g. on Android).
+    "lxml>=4.9.0",
     "deep-translator>=1.11.0",
     "EbookLib>=0.20",
 ]
@@ -86,6 +89,7 @@ ignore = [
 [tool.ruff.lint.per-file-ignores]
 "gui/**" = ["F811"]  # redefinition of unused names (Kivy KV includes)
 "tests/**" = ["F811", "PT009"]
+"**/__init__.py" = ["F401"]  # imports here are deliberate re-exports
 
 [tool.ruff.lint.isort]
 known-first-party = ["core", "sources", "tui", "gui"]

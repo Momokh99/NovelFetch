@@ -1,5 +1,26 @@
+import importlib
 import os
 import sys
+import types
+from typing import Any
+
+
+def _ensure_kivy_window_backend():
+    """Let KivyMD import on a Kivy built without SDL2.
+
+    android_env's Kivy was compiled with USE_SDL2=0 (kivy/setupconfig.py),
+    so kivy.core.window._window_sdl2 was never built and Kivy runs on the
+    deprecated pygame provider. KivyMD's WindowController tries window_sdl2,
+    then window_sdl3, and raises when neither exists — which crashed the app
+    on the first mouse move. Register a stand-in only as a last resort;
+    builds that have SDL2 (Android, official wheels) never reach it.
+    """
+    try:
+        importlib.import_module("kivy.core.window.window_sdl2")
+    except ImportError:
+        stub: Any = types.ModuleType("kivy.core.window.window_sdl3")
+        stub.WindowSDL = object
+        sys.modules["kivy.core.window.window_sdl3"] = stub
 
 
 def _run_gui():
@@ -10,6 +31,8 @@ def _run_gui():
     for p in (here,):
         if p not in sys.path:
             sys.path.insert(0, p)
+    # Must run before gui.main, which imports kivymd at module scope.
+    _ensure_kivy_window_backend()
     from gui.main import NovelFetchApp
 
     NovelFetchApp().run()

@@ -1,13 +1,16 @@
 import asyncio
+import logging
 import urllib.parse
 
+import httpx
 from bs4 import BeautifulSoup
 
-from core.http_client import get_client
+from core.http_client import fetch_soup, get_client, parse_html
 from sources.base import Source
 
 
 class WuxiaSpotSource(Source):
+    BASE_URL = "https://www.wuxiaspot.com"
     search_supported = False
 
     def __init__(self):
@@ -21,6 +24,7 @@ class WuxiaSpotSource(Source):
     @property
     def label(self) -> str:
         return "WuxiaSpot"
+
     @property
     def ascii_art(self) -> str:
         return """
@@ -30,6 +34,7 @@ class WuxiaSpotSource(Source):
     ██║███╗██║██║   ██║██╔══██║██║██╔══██║   ╚════██║██╔═══╝ ██║   ██║   ██║
     ╚███╔███╔╝╚██████╔╝██║  ██║██║██║  ██║██╗███████║██║     ╚██████╔╝   ██║
      ╚══╝╚══╝  ╚═════╝ ╚═╝  ╚═╝╚═╝╚═╝  ╚═╝╚═╝╚══════╝╚═╝      ╚═════╝    ╚═╝"""
+
     @property
     def browse_urls(self) -> dict[str, str]:
         return {
@@ -81,7 +86,6 @@ class WuxiaSpotSource(Source):
             "shounen": "Shounen",
             "shounen-ai": "Shounen Ai",
             "slice-of-life": "Slice Of Life",
-            "smut": "Smut",
             "sports": "Sports",
             "supernatural": "Supernatural",
             "tragedy": "Tragedy",
@@ -94,14 +98,10 @@ class WuxiaSpotSource(Source):
             "wuxia": "Wuxia",
             "xianxia": "Xianxia",
             "xuanhuan": "Xuanhuan",
-            "yaoi": "Yaoi",
-            "yuri": "Yuri",
         }
 
-    async def fetch_url(self, url: str, params: dict | None = None):
-        response = await self._client.get(url, params=params)
-        response.raise_for_status()
-        return BeautifulSoup(response.text, "html.parser")
+    async def fetch_url(self, url: str, params: dict | None = None) -> BeautifulSoup:
+        return await fetch_soup(self._client, url, params=params)
 
     def parse_slug(self, url: str) -> str | None:
         o = urllib.parse.urlparse(url)
@@ -110,17 +110,10 @@ class WuxiaSpotSource(Source):
             parts = path.split("/")
             if "novel" in parts:
                 idx = parts.index("novel")
-                return "/".join(parts[idx + 1:])
-
+                return "/".join(parts[idx + 1 :])
 
     def qualify_slug(self, slug: str) -> str:
         return f"wuxiaspot:{slug}"
-
-    @staticmethod
-    def _absolutize(url: str) -> str:
-        if url.startswith("/"):
-            return "https://www.wuxiaspot.com" + url
-        return url
 
     def extract_novel_rows(self, soup) -> list[dict]:
         results = []
@@ -138,13 +131,15 @@ class WuxiaSpotSource(Source):
             cover = self._absolutize(cover)
             if slug:
                 self._cover_cache[slug] = cover
-            results.append({
-                "title": title,
-                "author": "Unknown",
-                "slug": slug or "",
-                "latest": "",
-                "cover": cover,
-            })
+            results.append(
+                {
+                    "title": title,
+                    "author": "Unknown",
+                    "slug": slug or "",
+                    "latest": "",
+                    "cover": cover,
+                }
+            )
         return results
 
     async def search(self, query: str, page: int = 1) -> tuple[list[dict], int]:
@@ -158,9 +153,12 @@ class WuxiaSpotSource(Source):
             }
             response = await self._client.post(search_url, data=data)
             response.raise_for_status()
-            soup = BeautifulSoup(response.text, "html.parser")
+            soup = await parse_html(response.text)
+        except httpx.HTTPStatusError:
+            raise
         except Exception:
-            return [], 0
+            logging.warning("WuxiaSpot: search failed for %r", query, exc_info=True)
+            return [], 1
 
         page_links = soup.select(".pagination a")
         searchid = None
@@ -182,8 +180,12 @@ class WuxiaSpotSource(Source):
                 result_url = f"https://www.wuxiaspot.com/e/search/result/index.php?page={page - 1}&searchid={searchid}"
                 response = await self._client.get(result_url)
                 response.raise_for_status()
-                soup = BeautifulSoup(response.text, "html.parser")
+                soup = await parse_html(response.text)
             except Exception:
+                # Keep page-1 results rather than failing the whole search.
+                logging.warning(
+                    "WuxiaSpot: failed to fetch search page %d", page, exc_info=True
+                )
                 return self.extract_novel_rows(soup), total_pages
 
         novels = self.extract_novel_rows(soup)
@@ -192,15 +194,19 @@ class WuxiaSpotSource(Source):
     async def fetch_chapters(self, slug: str) -> list[dict]:
         url = f"https://www.wuxiaspot.com/novel/{slug}.html"
         soup = await self.fetch_url(url)
-        chapters = []
+        chapters: list[dict] = []
+        seen_urls: set[str] = set()  # deduplication guard
 
         links = soup.select(".chapter-list li a")
         for a in links:
             href = str(a.get("href") or "")
-            title_el = a.select_one(".chapter-title")
-            title = title_el.text.strip() if title_el else a.text.strip()
             if href and not href.startswith("http"):
                 href = "https://www.wuxiaspot.com" + href
+            if href in seen_urls:
+                continue
+            seen_urls.add(href)
+            title_el = a.select_one(".chapter-title")
+            title = title_el.text.strip() if title_el else a.text.strip()
             chapters.append({"num": 0, "title": title, "url": href})
 
         page_links = soup.select("#chpagedlist .pagination a")
@@ -214,31 +220,45 @@ class WuxiaSpotSource(Source):
 
         async def fetch_page(p):
             try:
-                page_url = f"https://www.wuxiaspot.com/e/extend/fy.php?page={p}&wjm={slug}"
+                page_url = (
+                    f"https://www.wuxiaspot.com/e/extend/fy.php?page={p}&wjm={slug}"
+                )
                 resp = await self._client.get(page_url)
                 resp.raise_for_status()
-                page_soup = BeautifulSoup(resp.text, "html.parser")
+                page_soup = await parse_html(resp.text)
                 page_chapters = []
                 for a in page_soup.select(".chapter-list li a"):
                     href = str(a.get("href") or "")
-                    title_el = a.select_one(".chapter-title")
-                    title = title_el.text.strip() if title_el else a.text.strip()
                     if href and not href.startswith("http"):
                         href = "https://www.wuxiaspot.com" + href
+                    title_el = a.select_one(".chapter-title")
+                    title = title_el.text.strip() if title_el else a.text.strip()
                     page_chapters.append({"num": 0, "title": title, "url": href})
                 return page_chapters
+            except httpx.HTTPStatusError:
+                raise
             except Exception:
+                logging.warning(
+                    "WuxiaSpot: failed to fetch chapter page %d for %r",
+                    p,
+                    slug,
+                    exc_info=True,
+                )
                 return []
 
         if total_pages > 1:
-            results = await asyncio.gather(*[fetch_page(p) for p in range(1, total_pages)])
+            results = await asyncio.gather(
+                *[fetch_page(p) for p in range(1, total_pages)]
+            )
             for page_chs in results:
-                chapters.extend(page_chs)
+                for ch in page_chs:
+                    if ch["url"] not in seen_urls:
+                        seen_urls.add(ch["url"])
+                        chapters.append(ch)
 
         for i, ch in enumerate(chapters, 1):
             ch["num"] = i
         return chapters
-
 
     async def read_chapter(self, url: str) -> list[str] | None:
         try:
@@ -248,7 +268,10 @@ class WuxiaSpotSource(Source):
                 return None
             text = content.get_text("\n", strip=True)
             return [p.strip() for p in text.split("\n") if p.strip()]
+        except httpx.HTTPStatusError:
+            raise
         except Exception:
+            logging.warning("WuxiaSpot: failed to read chapter %r", url, exc_info=True)
             return None
 
     async def cover_url(self, slug: str) -> str:
@@ -265,7 +288,9 @@ class WuxiaSpotSource(Source):
                 self._cover_cache[slug] = src
                 return src
         except Exception:
-            pass
+            logging.warning(
+                "WuxiaSpot: failed to get cover for %r", slug, exc_info=True
+            )
         return ""
 
     async def browse_genre(self, genre_slug: str) -> list[dict]:
@@ -273,7 +298,12 @@ class WuxiaSpotSource(Source):
             url = f"https://www.wuxiaspot.com/list/{genre_slug}/all-newstime-0.html"
             soup = await self.fetch_url(url)
             return self.extract_novel_rows(soup)
+        except httpx.HTTPStatusError:
+            raise
         except Exception:
+            logging.warning(
+                "WuxiaSpot: failed to browse genre %r", genre_slug, exc_info=True
+            )
             return []
 
     def novel_url(self, slug: str) -> str:
@@ -284,12 +314,14 @@ class WuxiaSpotSource(Source):
         soup = await self.fetch_url(url)
         author_el = soup.select_one(".novel-author") or soup.select_one(".author")
         author = author_el.get_text(strip=True) if author_el else "Unknown"
-        desc_el = soup.select_one(".novel-desc") or soup.select_one(".description") or soup.select_one(".summary")
-        description = desc_el.get_text("\n\n", strip=True) if desc_el else "No description available."
+        desc_el = (
+            soup.select_one(".novel-desc")
+            or soup.select_one(".description")
+            or soup.select_one(".summary")
+        )
+        description = (
+            desc_el.get_text("\n\n", strip=True)
+            if desc_el
+            else "No description available."
+        )
         return {"author": author, "description": description}
-
-
-
-
-
-

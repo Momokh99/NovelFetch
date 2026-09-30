@@ -1,3 +1,4 @@
+import contextlib
 import os
 import shutil
 
@@ -12,20 +13,36 @@ from kivymd.uix.dialog import (
     MDDialogHeadlineText,
     MDDialogSupportingText,
 )
-from kivymd.uix.label import MDLabel
 from kivymd.uix.list import MDList, MDListItem, MDListItemHeadlineText
 from kivymd.uix.screen import MDScreen
 
-from core.progress import _scan_library, progress
+from core.library import library_entries as _scan_library
+from core.progress import progress
 from gui.async_runner import async_loop
 from gui.screens.app_settings import load_settings, save_settings
 from gui.screens.utils import _snack
 from sources import REGISTRY
 
 PALETTES = [
-    "Red", "Pink", "Purple", "DeepPurple", "Indigo", "Blue", "LightBlue",
-    "Cyan", "Teal", "Green", "LightGreen", "Lime", "Yellow", "Amber",
-    "Orange", "DeepOrange", "Brown", "Grey", "BlueGrey",
+    "Red",
+    "Pink",
+    "Purple",
+    "DeepPurple",
+    "Indigo",
+    "Blue",
+    "LightBlue",
+    "Cyan",
+    "Teal",
+    "Green",
+    "LightGreen",
+    "Lime",
+    "Yellow",
+    "Amber",
+    "Orange",
+    "DeepOrange",
+    "Brown",
+    "Grey",
+    "BlueGrey",
 ]
 
 HOME_LAYOUTS = [
@@ -50,25 +67,21 @@ CARD_GRID_SIZES = [
 ]
 
 
-def _home_layout_label(layout):
-    for key, label in HOME_LAYOUTS:
-        if key == layout:
-            return label
-    return layout
+_HOME_LAYOUT_LABELS = dict(HOME_LAYOUTS)
+_READ_INDICATOR_LABELS = dict(READ_INDICATORS)
+_GRID_SIZE_LABELS = dict(CARD_GRID_SIZES)
+
+
+def _home_layout_label(key):
+    return _HOME_LAYOUT_LABELS.get(key, key)
 
 
 def _read_indicator_label(key):
-    for k, label in READ_INDICATORS:
-        if k == key:
-            return label
-    return key
+    return _READ_INDICATOR_LABELS.get(key, key)
 
 
 def _grid_size_label(key):
-    for k, label in CARD_GRID_SIZES:
-        if k == key:
-            return label
-    return key
+    return _GRID_SIZE_LABELS.get(key, key)
 
 
 class SettingsTab(MDScreen):
@@ -96,7 +109,8 @@ class SettingsTab(MDScreen):
         self.update_and_download_switch = self.ids.update_and_download_switch
         self.library_info = self.ids.library_info
         self.about_text = "NovelFetch\nSources: " + ", ".join(
-            s.label for s in REGISTRY.values())
+            s.label for s in REGISTRY.values()
+        )
 
         # theme_style is set in App.build(), AFTER this tab is constructed;
         # a zero-delay callback runs on the first frame, after on_start.
@@ -113,16 +127,17 @@ class SettingsTab(MDScreen):
         self.theme_switch.active = app.theme_cls.theme_style == "Dark"
         self.palette_row.text = f"Primary color: {app.theme_cls.primary_palette}"
         settings = load_settings()
-        self.read_indicator_row.text = \
-            f"Read indicator: {_read_indicator_label(settings.get('read_indicator', 'off'))}"
-        self.grid_size_row.text = \
-            f"Card grid size: {_grid_size_label(settings.get('card_grid_size', 'medium'))}"
-        self.home_layout_row.text = \
+        self.read_indicator_row.text = f"Read indicator: {_read_indicator_label(settings.get('read_indicator', 'off'))}"
+        self.grid_size_row.text = f"Card grid size: {_grid_size_label(settings.get('card_grid_size', 'medium'))}"
+        self.home_layout_row.text = (
             f"Home layout: {_home_layout_label(settings.get('home_layout', 'A'))}"
-        self.continue_reading_switch.active = \
-            bool(settings.get("show_continue_reading", True))
-        self.update_and_download_switch.active = \
-            bool(settings.get("update_and_download", False))
+        )
+        self.continue_reading_switch.active = bool(
+            settings.get("show_continue_reading", True)
+        )
+        self.update_and_download_switch.active = bool(
+            settings.get("update_and_download", False)
+        )
 
         async def coro():
             novels = _scan_library()
@@ -147,21 +162,33 @@ class SettingsTab(MDScreen):
         save_settings(theme_style=app.theme_cls.theme_style)
         self._notify("Dark theme" if self.theme_switch.active else "Light theme")
 
-    def _open_palette(self):
+    def _open_choice_dialog(self, title, options, current_key, on_set, dialog_attr):
+        """Generic single-choice dialog: shows options with a ✓ on the active one."""
         rows = MDList()
-        for color in PALETTES:
-            rows.add_widget(MDListItem(MDListItemHeadlineText(
-                text=color,
-            ), on_release=lambda *_, c=color: self._set_palette(c)))
-        # Instance ref: a dialog with no strong ref can be GC'd mid-open.
-        self._palette_dialog = MDDialog(
-            MDDialogHeadlineText(
-                text="Primary color",
-                halign="left",
-            ),
+        for key, label in options:
+            rows.add_widget(
+                MDListItem(
+                    MDListItemHeadlineText(
+                        text=label + (" ✓" if key == current_key else ""),
+                    ),
+                    on_release=lambda *_, k=key: on_set(k),
+                )
+            )
+        dialog = MDDialog(
+            MDDialogHeadlineText(text=title, halign="left"),
             MDDialogContentContainer(rows),
         )
-        self._palette_dialog.open()
+        setattr(self, dialog_attr, dialog)
+        dialog.open()
+
+    def _open_palette(self):
+        self._open_choice_dialog(
+            "Primary color",
+            [(c, c) for c in PALETTES],
+            MDApp.get_running_app().theme_cls.primary_palette,
+            self._set_palette,
+            "_palette_dialog",
+        )
 
     def _set_palette(self, color):
         if self._palette_dialog is not None:
@@ -172,20 +199,13 @@ class SettingsTab(MDScreen):
         self._notify(f"Primary color: {color}")
 
     def _open_home_layout(self):
-        rows = MDList()
-        current = load_settings().get("home_layout", "A")
-        for key, label in HOME_LAYOUTS:
-            rows.add_widget(MDListItem(MDListItemHeadlineText(
-                text=label + (" ✓" if key == current else ""),
-            ), on_release=lambda *_, k=key: self._set_home_layout(k)))
-        self._layout_dialog = MDDialog(
-            MDDialogHeadlineText(
-                text="Home layout",
-                halign="left",
-            ),
-            MDDialogContentContainer(rows),
+        self._open_choice_dialog(
+            "Home layout",
+            HOME_LAYOUTS,
+            load_settings().get("home_layout", "A"),
+            self._set_home_layout,
+            "_layout_dialog",
         )
-        self._layout_dialog.open()
 
     def _set_home_layout(self, key):
         if self._layout_dialog is not None:
@@ -199,20 +219,13 @@ class SettingsTab(MDScreen):
         self._notify(f"Home layout: {_home_layout_label(key)}")
 
     def _open_read_indicator(self):
-        rows = MDList()
-        current = load_settings().get("read_indicator", "off")
-        for key, label in READ_INDICATORS:
-            rows.add_widget(MDListItem(MDListItemHeadlineText(
-                text=label + (" ✓" if key == current else ""),
-            ), on_release=lambda *_, k=key: self._set_read_indicator(k)))
-        self._read_indicator_dialog = MDDialog(
-            MDDialogHeadlineText(
-                text="Read indicator",
-                halign="left",
-            ),
-            MDDialogContentContainer(rows),
+        self._open_choice_dialog(
+            "Read indicator",
+            READ_INDICATORS,
+            load_settings().get("read_indicator", "off"),
+            self._set_read_indicator,
+            "_read_indicator_dialog",
         )
-        self._read_indicator_dialog.open()
 
     def _set_read_indicator(self, key):
         if self._read_indicator_dialog is not None:
@@ -225,20 +238,13 @@ class SettingsTab(MDScreen):
         self._notify(f"Read indicator: {_read_indicator_label(key)}")
 
     def _open_grid_size(self):
-        rows = MDList()
-        current = load_settings().get("card_grid_size", "medium")
-        for key, label in CARD_GRID_SIZES:
-            rows.add_widget(MDListItem(MDListItemHeadlineText(
-                text=label + (" ✓" if key == current else ""),
-            ), on_release=lambda *_, k=key: self._set_grid_size(k)))
-        self._grid_size_dialog = MDDialog(
-            MDDialogHeadlineText(
-                text="Card grid size",
-                halign="left",
-            ),
-            MDDialogContentContainer(rows),
+        self._open_choice_dialog(
+            "Card grid size",
+            CARD_GRID_SIZES,
+            load_settings().get("card_grid_size", "medium"),
+            self._set_grid_size,
+            "_grid_size_dialog",
         )
-        self._grid_size_dialog.open()
 
     def _set_grid_size(self, key):
         if self._grid_size_dialog is not None:
@@ -252,21 +258,33 @@ class SettingsTab(MDScreen):
 
     def _toggle_continue_reading(self):
         app = MDApp.get_running_app()
-        if self.continue_reading_switch.active == load_settings().get("show_continue_reading", True):
+        if self.continue_reading_switch.active == load_settings().get(
+            "show_continue_reading", True
+        ):
             return  # programmatic sync from _refresh(), not a user toggle
         save_settings(show_continue_reading=self.continue_reading_switch.active)
         self._refresh()
         if hasattr(app.root, "homescreen_library_refresh"):
             app.root.homescreen_library_refresh(force=True)
-        self._notify("Continue reading: on" if self.continue_reading_switch.active else "Continue reading: off")
+        self._notify(
+            "Continue reading: on"
+            if self.continue_reading_switch.active
+            else "Continue reading: off"
+        )
 
     def _toggle_update_and_download(self):
         app = MDApp.get_running_app()
-        if self.update_and_download_switch.active == load_settings().get("update_and_download", False):
+        if self.update_and_download_switch.active == load_settings().get(
+            "update_and_download", False
+        ):
             return  # programmatic sync from _refresh(), not a user toggle
         save_settings(update_and_download=self.update_and_download_switch.active)
         self._refresh()
-        self._notify("Update & download: on" if self.update_and_download_switch.active else "Update & download: off")
+        self._notify(
+            "Update & download: on"
+            if self.update_and_download_switch.active
+            else "Update & download: off"
+        )
 
     # ---------- library ----------
 
@@ -281,10 +299,16 @@ class SettingsTab(MDScreen):
                 halign="left",
             ),
             MDDialogButtonContainer(
-                MDButton(MDButtonText(text="Cancel"), style="text",
-                         on_release=lambda *_: confirm.dismiss()),
-                MDButton(MDButtonText(text="Delete"), style="text",
-                         on_release=lambda *_: self._do_clear(confirm)),
+                MDButton(
+                    MDButtonText(text="Cancel"),
+                    style="text",
+                    on_release=lambda *_: confirm.dismiss(),
+                ),
+                MDButton(
+                    MDButtonText(text="Delete"),
+                    style="text",
+                    on_release=lambda *_: self._do_clear(confirm),
+                ),
                 spacing="8dp",
             ),
         )
@@ -293,15 +317,14 @@ class SettingsTab(MDScreen):
 
     def _do_clear(self, dialog):
         dialog.dismiss()
+
         # Run the deletion on the async loop to avoid blocking the UI thread
         # (ANR on Android with large libraries).
         async def coro():
             for novel in _scan_library():
                 slug = novel["slug"]
-                try:
+                with contextlib.suppress(OSError):
                     shutil.rmtree(os.path.join("novels", slug))
-                except OSError:
-                    pass
                 progress.remove(slug)
             for tracked in progress.tracked_novels():
                 progress.untrack(tracked["slug"])

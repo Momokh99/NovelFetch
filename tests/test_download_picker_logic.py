@@ -5,7 +5,7 @@ from gui.screens.download_picker import _CODE_TO_LABEL
 
 
 def test_code_to_label_is_reverse_of_languages():
-    assert _CODE_TO_LABEL == {v: k for k, v in LANGUAGES.items()}
+    assert {v: k for k, v in LANGUAGES.items()} == _CODE_TO_LABEL
 
 
 def test_code_to_label_all_codes_present():
@@ -56,8 +56,7 @@ def test_unread_computation():
     seen = {0, 1, 3}
     downloaded = 4  # chapters 0-3 are local files
 
-    unread = [ch for ch in chapters
-              if ch not in seen and ch >= downloaded]
+    unread = [ch for ch in chapters if ch not in seen and ch >= downloaded]
     # Chapters 4-9 are not seen and >= 4
     assert unread == [4, 5, 6, 7, 8, 9]
 
@@ -67,8 +66,7 @@ def test_unread_computation_all_seen():
     seen = {0, 1, 2, 3, 4}
     downloaded = 0
 
-    unread = [ch for ch in chapters
-              if ch not in seen and ch >= downloaded]
+    unread = [ch for ch in chapters if ch not in seen and ch >= downloaded]
     assert unread == []
 
 
@@ -77,8 +75,7 @@ def test_unread_computation_none_downloaded():
     seen = {0, 2}
     downloaded = 0
 
-    unread = [ch for ch in chapters
-              if ch not in seen and ch >= downloaded]
+    unread = [ch for ch in chapters if ch not in seen and ch >= downloaded]
     # 0 is seen, 2 is seen → [1, 3, 4]
     assert unread == [1, 3, 4]
 

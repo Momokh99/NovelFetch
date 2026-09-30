@@ -77,15 +77,12 @@ def test_navigation_back_from_reader():
 def test_navigation_keycode_27_on_tabs_exits():
     """ESC on tabs screen: not consumed, allow app pause/exit."""
     current = "tabs"
-    consumed = not (current == "tabs")
+    consumed = current != "tabs"
     assert not consumed
 
 
 def test_navigation_keycode_27_on_subscreen_consumed():
     """ESC on a sub-screen: consumed, go back."""
     current = "reader"
-    if current != "tabs":
-        consumed = True
-    else:
-        consumed = False
+    consumed = current != "tabs"
     assert consumed

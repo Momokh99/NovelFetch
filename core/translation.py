@@ -1,4 +1,5 @@
 import re
+import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
 
@@ -6,13 +7,15 @@ from deep_translator import GoogleTranslator
 
 # Lazy-initialized: only created when translation is actually used.
 _translate_pool: ThreadPoolExecutor | None = None
+_pool_lock = threading.Lock()  # guards lazy init against concurrent threads
 
 
 def _get_translate_pool() -> ThreadPoolExecutor:
     global _translate_pool
-    if _translate_pool is None:
-        _translate_pool = ThreadPoolExecutor(max_workers=5)
-    return _translate_pool
+    with _pool_lock:
+        if _translate_pool is None:
+            _translate_pool = ThreadPoolExecutor(max_workers=5)
+        return _translate_pool
 
 
 def shutdown_translate_pool():
@@ -64,7 +67,7 @@ def _safe_translate(translator, chunk, retries=_RETRIES):
     for attempt in range(retries):
         try:
             out = translator.translate(chunk)
-            if (out and not _ERROR_PAGE_RE.match(str(out))):
+            if out and not _ERROR_PAGE_RE.match(str(out)):
                 return out
             last = out  # e.g. 'Error 500 (Server Error)!!1...' — retry
         except Exception as exc:  # noqa: BLE001 — provider errors are expected
@@ -81,9 +84,10 @@ def _translate_text(text, target):
         return None
     chunks = _chunk_text(text)
     if len(chunks) == 1:
-        return _safe_translate(translator, text)
-    translated = list(_get_translate_pool().map(
-        lambda c: _safe_translate(translator, c), chunks))
+        return _safe_translate(translator, chunks[0])
+    translated = list(
+        _get_translate_pool().map(lambda c: _safe_translate(translator, c), chunks)
+    )
     if any(t is None for t in translated):
         return None
-    return "\n\n".join([t for t in translated if t is not None])
+    return "\n\n".join(t for t in translated if t is not None)
