@@ -21,6 +21,45 @@ def _ensure_kivy_window_backend():
         stub: Any = types.ModuleType("kivy.core.window.window_sdl3")
         stub.WindowSDL = object
         sys.modules["kivy.core.window.window_sdl3"] = stub
+        _fix_pygame_window_resize()
+
+
+def _fix_pygame_window_resize():
+    """Keep the pygame provider in sync with the real window size.
+
+    WindowBase binds ``_size`` to ``trigger_create_window``, and
+    WindowPygame.create_window() re-reads ``pygame.display.Info()`` — which
+    pygame never refreshes for OpenGL windows. The compositor's resize is
+    therefore overwritten with the stale width/height from
+    ~/.kivy/config.ini, so the app paints only that corner of the window and
+    leaves the rest transparent (the desktop wallpaper shows through).
+    ``pygame.display.get_window_size()`` does track the live surface, so
+    swap it in for the duration of ``create_window()``.
+    """
+    import pygame
+    from kivy.core.window.window_pygame import WindowPygame
+
+    original = WindowPygame.create_window
+    real_info = pygame.display.Info
+
+    class _LiveInfo:
+        def __init__(self):
+            try:
+                width, height = pygame.display.get_window_size()
+            except Exception:
+                info = real_info()
+                width, height = info.current_w, info.current_h
+            self.current_w = width
+            self.current_h = height
+
+    def create_window(self, *args, **kwargs):
+        pygame.display.Info = _LiveInfo
+        try:
+            return original(self, *args, **kwargs)
+        finally:
+            pygame.display.Info = real_info
+
+    WindowPygame.create_window = create_window
 
 
 def _run_gui():
