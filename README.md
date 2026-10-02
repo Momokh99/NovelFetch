@@ -13,6 +13,10 @@ A terminal + mobile novel reader and downloader with a pluggable scraper archite
                           TUI + GUI Novel Reader v2
 ```
 
+<p align="center">
+  <img src="docs/images/tui-main-menu.png" alt="NovelFetch Textual TUI main menu — the active source's ASCII banner above Primary actions (Search by name, My Library) and Browse lists (Hot novels, Latest releases, Most popular, Completed novels, Browse by genre)" width="800">
+</p>
+
 ![menu](https://img.shields.io/badge/built%20with-Textual-blue)
 ![python](https://img.shields.io/badge/python-3.9%2B-blue)
 ![license](https://img.shields.io/badge/license-MIT-green)
