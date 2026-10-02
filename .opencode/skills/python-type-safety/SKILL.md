@@ -41,6 +41,7 @@ def get_user(user_id: str) -> User | None:
     """Return type makes 'might not exist' explicit."""
     ...
 
+
 # Type checker enforces handling None case
 user = get_user("123")
 if user is None:
@@ -59,12 +60,14 @@ def get_user(user_id: str) -> User:
     """Retrieve user by ID."""
     ...
 
+
 def process_batch(
     items: list[Item],
     max_workers: int = 4,
 ) -> BatchResult[ProcessedItem]:
     """Process items concurrently."""
     ...
+
 
 class UserRepository:
     def __init__(self, db: Database) -> None:
@@ -74,8 +77,7 @@ class UserRepository:
         """Return User if found, None otherwise."""
         ...
 
-    async def find_by_email(self, email: str) -> User | None:
-        ...
+    async def find_by_email(self, email: str) -> User | None: ...
 
     async def save(self, user: User) -> User:
         """Save and return user with generated ID."""
@@ -90,17 +92,17 @@ Python 3.10+ provides cleaner union syntax.
 
 ```python
 # Preferred (3.10+)
-def find_user(user_id: str) -> User | None:
-    ...
+def find_user(user_id: str) -> User | None: ...
 
-def parse_value(v: str) -> int | float | str:
-    ...
+
+def parse_value(v: str) -> int | float | str: ...
+
 
 # Older style (still valid, needed for 3.9)
 from typing import Optional, Union
 
-def find_user(user_id: str) -> Optional[User]:
-    ...
+
+def find_user(user_id: str) -> Optional[User]: ...
 ```
 
 ### Pattern 3: Type Narrowing with Guards
@@ -120,6 +122,7 @@ def process_user(user_id: str) -> UserData:
         email=user.email,
     )
 
+
 def process_items(items: list[Item | None]) -> list[ProcessedItem]:
     # Filter and narrow types
     valid_items = [item for item in items if item is not None]
@@ -136,6 +139,7 @@ from typing import TypeVar, Generic
 
 T = TypeVar("T")
 E = TypeVar("E", bound=Exception)
+
 
 class Result(Generic[T, E]):
     """Represents either a success value or an error."""
@@ -170,12 +174,14 @@ class Result(Generic[T, E]):
             return default
         return self._value  # type: ignore[return-value]
 
+
 # Usage preserves types
 def parse_config(path: str) -> Result[Config, ConfigError]:
     try:
         return Result(value=Config.from_file(path))
     except ConfigError as e:
         return Result(error=e)
+
 
 result = parse_config("config.yaml")
 if result.is_success:

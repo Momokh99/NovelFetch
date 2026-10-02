@@ -152,6 +152,7 @@ __version__ = "1.0.0"
 
 # Or with setuptools-scm
 from importlib.metadata import version
+
 __version__ = version("my-package")
 ```
 
@@ -163,11 +164,13 @@ __version__ = version("my-package")
 # src/my_package/cli.py
 import click
 
+
 @click.group()
 @click.version_option()
 def cli():
     """My awesome CLI tool."""
     pass
+
 
 @cli.command()
 @click.argument("name")
@@ -176,6 +179,7 @@ def greet(name: str, greeting: str):
     """Greet someone."""
     click.echo(f"{greeting}, {name}!")
 
+
 @cli.command()
 @click.option("--count", default=1, help="Number of times to repeat")
 def repeat(count: int):
@@ -183,9 +187,11 @@ def repeat(count: int):
     for i in range(count):
         click.echo(f"Message {i + 1}")
 
+
 def main():
     """Entry point for CLI."""
     cli()
+
 
 if __name__ == "__main__":
     main()
@@ -214,18 +220,12 @@ my-tool repeat --count=3
 import argparse
 import sys
 
+
 def main():
     """Main CLI entry point."""
-    parser = argparse.ArgumentParser(
-        description="My awesome tool",
-        prog="my-tool"
-    )
+    parser = argparse.ArgumentParser(description="My awesome tool", prog="my-tool")
 
-    parser.add_argument(
-        "--version",
-        action="version",
-        version="%(prog)s 1.0.0"
-    )
+    parser.add_argument("--version", action="version", version="%(prog)s 1.0.0")
 
     subparsers = parser.add_subparsers(dest="command", help="Commands")
 
@@ -233,9 +233,7 @@ def main():
     process_parser = subparsers.add_parser("process", help="Process data")
     process_parser.add_argument("input_file", help="Input file path")
     process_parser.add_argument(
-        "--output", "-o",
-        default="output.txt",
-        help="Output file path"
+        "--output", "-o", default="output.txt", help="Output file path"
     )
 
     args = parser.parse_args()
@@ -246,9 +244,11 @@ def main():
         parser.print_help()
         sys.exit(1)
 
+
 def process_data(input_file: str, output_file: str):
     """Process data from input to output."""
     print(f"Processing {input_file} -> {output_file}")
+
 
 if __name__ == "__main__":
     main()

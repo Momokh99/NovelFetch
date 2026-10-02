@@ -21,26 +21,27 @@ Detailed examples and patterns from the NovelFetch codebase.
 from kivymd.uix.screen import MDScreen
 from kivymd.uix.screenmanager import MDScreenManager
 
+
 class MainScreen(MDScreen):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.screen_manager = MDScreenManager()
         self.add_widget(self.screen_manager)
-        
+
         # Register screens
         self.screen_manager.add_widget(HomeTab(name="home"))
         self.screen_manager.add_widget(SearchTab(name="search"))
         self.screen_manager.add_widget(UpdateTab(name="updates"))
         self.screen_manager.add_widget(HistoryTab(name="history"))
         self.screen_manager.add_widget(SettingsTab(name="settings"))
-    
+
     def goto(self, name, **kwargs):
         """Navigate to screen by name."""
         screen = self.screen_manager.get_screen(name)
-        if hasattr(screen, 'on_enter'):
+        if hasattr(screen, "on_enter"):
             screen.on_enter(**kwargs)
         self.screen_manager.current = name
-    
+
     def back(self):
         """Go back to previous screen."""
         if len(self.screen_manager.screen_history) > 1:
@@ -93,24 +94,25 @@ class MainScreen(MDScreen):
 import asyncio
 from kivy.clock import Clock
 
+
 class AsyncLoop:
     """Bridge asyncio event loop to Kivy's Clock thread."""
-    
+
     def __init__(self):
         self._loop = None
         self._task = None
         self._running = False
-    
+
     def start(self):
         """Start the async event loop."""
         if self._running:
             return
-        
+
         self._loop = asyncio.new_event_loop()
         asyncio.set_event_loop(self._loop)
         self._task = Clock.schedule_interval(self._pump, 0)
         self._running = True
-    
+
     def _pump(self, dt):
         """Pump the asyncio event loop."""
         if self._loop and self._loop.is_running():
@@ -119,7 +121,7 @@ class AsyncLoop:
                 self._loop.run_forever()
             except RuntimeError:
                 pass
-    
+
     def stop(self):
         """Stop the async event loop."""
         if self._task:
@@ -129,18 +131,19 @@ class AsyncLoop:
             self._loop.close()
             self._loop = None
         self._running = False
-    
+
     async def run(self, coro):
         """Run a coroutine in the async loop."""
         if not self._loop:
             raise RuntimeError("AsyncLoop not started")
         return await asyncio.ensure_future(coro, loop=self._loop)
-    
+
     def create_task(self, coro):
         """Create a task without waiting for it."""
         if not self._loop:
             raise RuntimeError("AsyncLoop not started")
         return asyncio.ensure_future(coro, loop=self._loop)
+
 
 # Singleton instance
 async_loop = AsyncLoop()
@@ -154,26 +157,27 @@ class ReaderScreen(MDScreen):
     def _load_chapter(self, url):
         """Load chapter asynchronously."""
         async_loop.create_task(self._fetch_chapter(url))
-    
+
     async def _fetch_chapter(self, url):
         """Fetch chapter content from network."""
         try:
             from httpx import AsyncClient
+
             async with AsyncClient() as client:
                 response = await client.get(url)
                 text = response.text
                 self._display_text(text)
         except Exception as e:
             self._show_error(str(e))
-    
+
     def _display_text(self, text):
         """Display text in reader (must be called from main thread)."""
         Clock.schedule_once(lambda dt: self._update_display(text), 0)
-    
+
     def _update_display(self, text):
         """Update display widgets."""
         self.ids.body_box.clear_widgets()
-        lines = text.split('\n')
+        lines = text.split("\n")
         chunks = pack_lines_into_chunks(lines, self._per_chunk)
         for chunk in chunks:
             label = MDLabel(text=chunk, adaptive_height=True)
@@ -301,9 +305,10 @@ class ReaderScreen(MDScreen):
 from kivymd.uix.card import MDCard
 from kivymd.uix.label import MDLabel
 
+
 class NovelCard(MDCard):
     """Custom card for novel display."""
-    
+
     def __init__(self, novel_data, **kwargs):
         super().__init__(**kwargs)
         self.novel_data = novel_data
@@ -313,18 +318,18 @@ class NovelCard(MDCard):
         self.padding = dp(8)
         self.spacing = dp(8)
         self.radius = [14, 14, 14, 14]
-        
+
         # Add cover image
         cover = Image(
-            source=novel_data.get('cover', ''),
+            source=novel_data.get("cover", ""),
             allow_stretch=True,
             keep_ratio=True,
         )
         self.add_widget(cover)
-        
+
         # Add title
         title = MDLabel(
-            text=novel_data.get('title', ''),
+            text=novel_data.get("title", ""),
             font_style="Title",
             role="medium",
             adaptive_height=True,
@@ -338,25 +343,26 @@ class NovelCard(MDCard):
 # gui/screens/chapter_list.py
 from kivymd.uix.list import MDListItem, MDListItemHeadlineText, MDListItemSupportingText
 
+
 class ChapterListItem(MDListItem):
     """Custom list item for chapters."""
-    
+
     def __init__(self, chapter_data, **kwargs):
         super().__init__(**kwargs)
         self.chapter_data = chapter_data
-        
+
         # Add leading number
         num_label = MDListItemLeadingIcon(
             icon="book-open-page-variant",
         )
         self.add_widget(num_label)
-        
+
         # Add headline
         headline = MDListItemHeadlineText(
-            text=chapter_data.get('title', ''),
+            text=chapter_data.get("title", ""),
         )
         self.add_widget(headline)
-        
+
         # Add supporting text
         supporting = MDListItemSupportingText(
             text=f"Chapter {chapter_data.get('number', '')}",
@@ -382,37 +388,41 @@ from gui.screens.reader import (
     pack_lines_into_chunks,
 )
 
+
 def test_strip_control_chars_removes_rtl_marks():
     text = "مرحبا\u200f بالعالم"
     clean = _strip_control_chars(text)
     assert "\u200f" not in clean
     assert clean == "مرحبا بالعالم"
 
+
 def test_font_clamping():
     def clamp_font(size, delta):
         return min(28, max(14, size + delta))
-    
+
     assert clamp_font(16, 2) == 18
     assert clamp_font(16, -10) == 14
     assert clamp_font(28, 2) == 28
     assert clamp_font(14, -2) == 14
 
+
 def test_greedy_wrap_basic():
     widths = [100, 100, 100, 100]
     space_w = 10
     avail = 250
-    
+
     lines = _greedy_wrap(widths, space_w, avail)
-    
+
     # Should wrap at 2 words per line (100 + 10 + 100 = 210 < 250)
     assert len(lines) == 2
     assert lines[0] == [0, 1]
     assert lines[1] == [2, 3]
 
+
 def test_pack_lines_into_chunks():
     lines = ["Line 1", "Line 2", "Line 3", "Line 4", "Line 5"]
     chunks = pack_lines_into_chunks(lines, 2)
-    
+
     assert len(chunks) == 3
     assert chunks[0] == "Line 1\nLine 2"
     assert chunks[1] == "Line 3\nLine 4"
@@ -426,29 +436,32 @@ def test_pack_lines_into_chunks():
 import pytest
 from gui.screens.search_tab import SearchTab
 
+
 def test_search_initial_state():
     tab = SearchTab()
     assert tab._search_text == ""
     assert tab._results == []
     assert tab._loading == False
 
+
 def test_search_pagination():
     tab = SearchTab()
     tab._page = 1
     tab._has_more = True
-    
+
     # Simulate loading more results
     tab._load_more()
-    
+
     assert tab._page == 2
+
 
 def test_search_clear():
     tab = SearchTab()
     tab._search_text = "test query"
     tab._results = [{"title": "Test"}]
-    
+
     tab._clear_search()
-    
+
     assert tab._search_text == ""
     assert tab._results == []
 ```
@@ -460,25 +473,28 @@ def test_search_clear():
 import pytest
 from unittest.mock import MagicMock, patch
 
+
 @pytest.fixture
 def mock_app():
-    with patch('kivymd.app.MDApp.get_running_app') as mock:
+    with patch("kivymd.app.MDApp.get_running_app") as mock:
         app = MagicMock()
         app.theme_cls.theme_style = "Dark"
         app.theme_cls.primary_palette = "Blue"
         mock.return_value = app
         yield app
 
+
 @pytest.fixture
 def mock_clock():
-    with patch('kivy.clock.Clock') as mock:
+    with patch("kivy.clock.Clock") as mock:
         mock.schedule_once = MagicMock()
         mock.schedule_interval = MagicMock()
         yield mock
 
+
 @pytest.fixture
 def mock_async_loop():
-    with patch('async_runner.async_loop') as mock:
+    with patch("async_runner.async_loop") as mock:
         mock.create_task = MagicMock()
         mock.run = MagicMock()
         yield mock

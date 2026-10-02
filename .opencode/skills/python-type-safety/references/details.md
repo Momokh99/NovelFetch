@@ -13,6 +13,7 @@ from abc import ABC, abstractmethod
 T = TypeVar("T")
 ID = TypeVar("ID")
 
+
 class Repository(ABC, Generic[T, ID]):
     """Generic repository interface."""
 
@@ -31,20 +32,17 @@ class Repository(ABC, Generic[T, ID]):
         """Delete entity, return True if existed."""
         ...
 
+
 class UserRepository(Repository[User, str]):
     """Concrete repository for Users with string IDs."""
 
     async def get(self, id: str) -> User | None:
-        row = await self._db.fetchrow(
-            "SELECT * FROM users WHERE id = $1", id
-        )
+        row = await self._db.fetchrow("SELECT * FROM users WHERE id = $1", id)
         return User(**row) if row else None
 
-    async def save(self, entity: User) -> User:
-        ...
+    async def save(self, entity: User) -> User: ...
 
-    async def delete(self, id: str) -> bool:
-        ...
+    async def delete(self, id: str) -> bool: ...
 ```
 
 ### Pattern 6: TypeVar with Bounds
@@ -57,14 +55,17 @@ from pydantic import BaseModel
 
 ModelT = TypeVar("ModelT", bound=BaseModel)
 
+
 def validate_and_create(model_cls: type[ModelT], data: dict) -> ModelT:
     """Create a validated Pydantic model from dict."""
     return model_cls.model_validate(data)
+
 
 # Works with any BaseModel subclass
 class User(BaseModel):
     name: str
     email: str
+
 
 user = validate_and_create(User, {"name": "Alice", "email": "a@b.com"})
 # user is typed as User
@@ -80,16 +81,16 @@ Define interfaces without requiring inheritance.
 ```python
 from typing import Protocol, runtime_checkable
 
+
 @runtime_checkable
 class Serializable(Protocol):
     """Any class that can be serialized to/from dict."""
 
-    def to_dict(self) -> dict:
-        ...
+    def to_dict(self) -> dict: ...
 
     @classmethod
-    def from_dict(cls, data: dict) -> "Serializable":
-        ...
+    def from_dict(cls, data: dict) -> "Serializable": ...
+
 
 # User satisfies Serializable without inheriting from it
 class User:
@@ -104,9 +105,11 @@ class User:
     def from_dict(cls, data: dict) -> "User":
         return cls(id=data["id"], name=data["name"])
 
+
 def serialize(obj: Serializable) -> str:
     """Works with any Serializable object."""
     return json.dumps(obj.to_dict())
+
 
 # Works - User matches the protocol
 serialize(User("1", "Alice"))
@@ -122,25 +125,35 @@ Define reusable structural interfaces.
 ```python
 from typing import Protocol
 
+
 class Closeable(Protocol):
     """Resource that can be closed."""
+
     def close(self) -> None: ...
+
 
 class AsyncCloseable(Protocol):
     """Async resource that can be closed."""
+
     async def close(self) -> None: ...
+
 
 class Readable(Protocol):
     """Object that can be read from."""
+
     def read(self, n: int = -1) -> bytes: ...
+
 
 class HasId(Protocol):
     """Object with an ID property."""
+
     @property
     def id(self) -> str: ...
 
+
 class Comparable(Protocol):
     """Object that supports comparison."""
+
     def __lt__(self, other: "Comparable") -> bool: ...
     def __le__(self, other: "Comparable") -> bool: ...
 ```
@@ -172,8 +185,7 @@ Handler: TypeAlias = Callable[[Request], Response]
 
 ```python
 # Usage
-def register_handler(path: str, handler: Handler[Response]) -> None:
-    ...
+def register_handler(path: str, handler: Handler[Response]) -> None: ...
 ```
 
 ### Pattern 10: Callable Types
@@ -189,6 +201,7 @@ ProgressCallback = Callable[[int, int], None]  # (current, total)
 # Async callback
 AsyncHandler = Callable[[Request], Awaitable[Response]]
 
+
 # With named parameters (using Protocol)
 class OnProgress(Protocol):
     def __call__(
@@ -198,6 +211,7 @@ class OnProgress(Protocol):
         *,
         message: str = "",
     ) -> None: ...
+
 
 def process_items(
     items: list[Item],
