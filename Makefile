@@ -3,7 +3,7 @@
 # ==============================================================================
 
 .DEFAULT_GOAL := help
-.PHONY: help setup setup-tui setup-android lint lint-fix format format-check test test-quick test-android run-tui run-kivy run-kivy-dev bump-release
+.PHONY: help setup setup-tui setup-android lint lint-fix format format-check run-tui run-kivy bump-release
 
 help:  ## Display this help
 	@awk 'BEGIN {FS = ":.*##"; printf "\nUsage:\n  make \033[36m<target>\033[0m\n"} \
