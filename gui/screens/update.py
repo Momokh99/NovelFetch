@@ -290,7 +290,7 @@ class UpdateTab(MDScreen):
                         return None
                     raw = slug.split(":", 1)[-1] if ":" in slug else slug
                     try:
-                        chapters = await _get_chapters(source, raw)
+                        chapters = await _get_chapters(source, raw, fresh=True)
                     except Exception as exc:
                         errors.append(exc)
                         return None

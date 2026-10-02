@@ -4,7 +4,7 @@ import urllib.parse
 from bs4 import BeautifulSoup
 
 from core.http_client import fetch_soup, get_client
-from sources.base import Source
+from sources.base import Source, chapter_count_from_text
 
 
 class NovelFireSource(Source):
@@ -135,11 +135,18 @@ class NovelFireSource(Source):
         return max(numbers) if numbers else 1
 
     async def read_chapter(self, url: str) -> list[str] | None:
-        soup = await self.fetch_url(url)
-        main_content = soup.find("div", id="content")
-        if not main_content:
-            return None
-        return [p.get_text(strip=True) for p in main_content.find_all("p")]
+        # novelfire intermittently answers a chapter page with a JS
+        # "Loading..." shell — HTTP 200 but no #content — when requests come
+        # in bursts.  One retry clears it in practice; a genuinely missing
+        # chapter still falls through to None.
+        for attempt in range(2):
+            soup = await self.fetch_url(url)
+            main_content = soup.find("div", id="content")
+            if main_content:
+                return [p.get_text(strip=True) for p in main_content.find_all("p")]
+            if attempt == 0:
+                await asyncio.sleep(1.5)
+        return None
 
     def extract_novel_rows(self, soup: BeautifulSoup) -> list[dict]:
         results = []
@@ -166,10 +173,38 @@ class NovelFireSource(Source):
             )
         return results
 
+    def chapter_url(self, slug: str, num: int) -> str | None:
+        """Every chapter lives at /book/<slug>/chapter-<N> with N == position."""
+        if num < 1:
+            return None
+        return f"{self.BASE_URL}/book/{slug}/chapter-{num}"
+
+    async def fetch_chapter_count(self, slug: str) -> int:
+        """The book's own page prints the total ("2334 Chapters")."""
+        url = f"https://novelfire.net/book/{slug}"
+        for attempt in range(2):
+            soup = await self.fetch_url(url)
+            stated = chapter_count_from_text(soup.get_text(" ", strip=True))
+            if stated:
+                return stated
+            if attempt == 0:
+                # A JS "Loading..." shell states nothing, and read_chapter
+                # already showed one retry clears it.  A book page that
+                # genuinely lists no total costs this pause once per novel and
+                # then falls back to a real fetch.
+                await asyncio.sleep(1.5)
+        return 0
+
     async def fetch_chapters(self, slug: str) -> list[dict]:
         chapters: list[dict] = []
         seen: set[str] = set()
         page = 1
+        # The chapters page ships its own pagination bar (ul.pagination >
+        # a.page-link) carrying the last page number, so the first response
+        # already says how long this run will be.  ``None`` = no bar seen,
+        # which falls back to walking pages until one comes back empty.
+        first_page_rows = 0
+        total_pages: int | None = None
         while True:
             soup = await self.fetch_url(
                 f"https://novelfire.net/book/{slug}/chapters",
@@ -178,6 +213,10 @@ class NovelFireSource(Source):
             rows = soup.select("ul.chapter-list li a[href]")
             if not rows:
                 break
+            if not first_page_rows:
+                first_page_rows = len(rows)
+                if soup.select_one("ul.pagination"):
+                    total_pages = self.extract_total_pages(soup)
             for row in rows:
                 href = str(row["href"])
                 if href in seen:
@@ -198,10 +237,21 @@ class NovelFireSource(Source):
                         "url": self._absolutize(href),
                     }
                 )
+            # Stop before probing a page past the end.  Without a pagination
+            # bar a short page is the last one; with one, the site's own page
+            # count ends the run — but only when that page looks like an end
+            # (short, or a novel that fits on one page), so a bar that
+            # under-reports the count can never silently drop chapters.
+            if total_pages is None:
+                if len(rows) < first_page_rows:
+                    break
+            elif page >= total_pages and (
+                total_pages <= 1 or len(rows) < first_page_rows
+            ):
+                break
             page += 1
-            # Reaching here means this page had rows, so another request is
-            # coming — wait before it.  The empty-page `break` above never
-            # sleeps, so there is no trailing pause after the last page.
+            # Every `break` above lands before this line, so a run never
+            # sleeps after the page it knows is the last one.
             await asyncio.sleep(self.PAGE_DELAY)
         return chapters
 
