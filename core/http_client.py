@@ -238,8 +238,9 @@ def describe_error(error: BaseException, action: str) -> str:
     """Turn an exception into a short user-facing message.
 
     *action* is what the caller was doing, e.g. ``"Search failed"`` or
-    ``"Failed to fetch chapters"``.  Non-HTTP failures keep the caller's
-    original "check your connection" wording.
+    ``"Failed to fetch chapters"``.  Only genuine network failures are
+    described as a connection problem; anything else is named instead, so
+    a bug in the app never masquerades as "check your connection".
     """
     status = _status_code(error)
     if status is not None:
@@ -258,4 +259,4 @@ def describe_error(error: BaseException, action: str) -> str:
         return f"{action} — timed out. Check your connection."
     if isinstance(error, httpx.TransportError):
         return f"{action} — could not reach the server."
-    return f"{action}. Check your connection."
+    return f"{action} — unexpected error ({type(error).__name__})."

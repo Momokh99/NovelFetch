@@ -27,6 +27,24 @@ def _novel_to_option(novel: dict) -> Option:
     return Option(text, id=novel["slug"])
 
 
+def _dedupe_novels(novels: list) -> list:
+    """Drop novels whose slug is missing or already in the list.
+
+    ``OptionList`` keys options by id and raises ``DuplicateID`` on a repeat,
+    and some sources list the same novel on several rows (novelfire search
+    does this for common queries such as ``a``).
+    """
+    seen: set = set()
+    kept = []
+    for novel in novels:
+        slug = novel.get("slug")
+        if not slug or slug in seen:
+            continue
+        seen.add(slug)
+        kept.append(novel)
+    return kept
+
+
 class SearchScreen(Screen):
     BINDINGS = [
         Binding("escape", "clear_or_pop", "Back"),
@@ -88,7 +106,6 @@ class SearchScreen(Screen):
         self.query_one(LoadingIndicator).set_class(True, "-visible")
         try:
             novels, total_pages = await self.source.search(self._query, self._page)
-            self._results = novels
             self._total_pages = total_pages
             self._show_results(novels)
         except Exception as error:
@@ -99,17 +116,21 @@ class SearchScreen(Screen):
             self.query_one(LoadingIndicator).set_class(False, "-visible")
 
     def _show_results(self, novels):
+        visible = _dedupe_novels(novels)
+        # Keep _results in lockstep with the rendered options: the selection
+        # handler indexes into it by option position.
+        self._results = visible
         ol = self.query_one("#search-results", OptionList)
         ol.clear_options()
-        for n in novels:
+        for n in visible:
             ol.add_option(_novel_to_option(n))
         pi = self.query_one("#page-info")
-        if not novels:
+        if not visible:
             pi.update("No novels found")
         elif self._total_pages > 1:
-            pi.update(f"{len(novels)} results — Page {self._page}/{self._total_pages}")
+            pi.update(f"{len(visible)} results — Page {self._page}/{self._total_pages}")
         else:
-            pi.update(f"{len(novels)} results")
+            pi.update(f"{len(visible)} results")
 
     async def on_option_list_option_selected(self, event: OptionList.OptionSelected):
         idx = event.option_index
@@ -169,7 +190,9 @@ class NovelListScreen(Screen):
 
     def __init__(self, novels: list, source=None):
         super().__init__()
-        self.novels = novels
+        # Dedupe up front: compose() keys options by slug and the selection
+        # handler indexes back into this list by option position.
+        self.novels = _dedupe_novels(novels)
         self.source = source
 
     def compose(self):
@@ -184,7 +207,7 @@ class NovelListScreen(Screen):
 
     async def on_option_list_option_selected(self, event: OptionList.OptionSelected):
         idx = event.option_index
-        if idx is None:
+        if idx is None or idx >= len(self.novels):
             return
         event.option_list.disabled = True
         self.query_one(LoadingIndicator).set_class(True, "-visible")
