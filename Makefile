@@ -26,7 +26,7 @@ setup-android:  ## Create android_env with system Kivy and GUI/UI test tools
 	python3 -m venv --system-site-packages android_env
 	./android_env/bin/pip install --upgrade pip
 	./android_env/bin/pip install -r gui/requirements.txt
-	./android_env/bin/pip install pytest pytest-cov watchdog
+	./android_env/bin/pip install watchdog
 	@echo "✅ GUI environment ready. Activate with: source android_env/bin/activate"
 	@echo "   Arch Linux requires the system package: sudo pacman -S python-kivy"
 
@@ -47,17 +47,6 @@ format:  ## Format code (ruff format + import sorting)
 format-check:  ## Check formatting without modifying
 	./myenv/bin/ruff format --check .
 	./myenv/bin/ruff check --select I . --diff
-
-##@ ────────────────────── Testing
-
-test:  ## Run all tests with coverage in android_env
-	./android_env/bin/pytest tests/ -v --tb=short --cov=. --cov-report=term-missing
-
-test-quick:  ## Run tests without coverage (fast)
-	./android_env/bin/pytest tests/ -x -q
-
-test-android:  ## Run only Android/UI-related tests
-	./android_env/bin/pytest tests/ -v -k "android or ui" --tb=short
 
 ##@ ────────────────────── Desktop Development
 
@@ -100,7 +89,7 @@ bump-release:  ## Bump version in pyproject.toml and buildozer.spec (usage: make
 ##@ ────────────────────── Cleanup
 
 clean:  ## Remove build artifacts and caches
-	rm -rf build/ dist/ *.egg-info/ .pytest_cache/
+	rm -rf build/ dist/ *.egg-info/
 	rm -rf .ruff_cache/ .mypy_cache/
 	find . -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true
 	find . -type f -name "*.pyc" -delete 2>/dev/null || true

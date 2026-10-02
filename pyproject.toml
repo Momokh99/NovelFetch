@@ -41,8 +41,6 @@ gui = [
 dev = [
     "ruff>=0.8.0",
     "mypy>=1.13",
-    "pytest>=8.0",
-    "pytest-cov>=6.0",
     "pre-commit>=4.0",
     "watchdog>=5.0",
 ]
@@ -78,7 +76,6 @@ select = [
     "UP",   # pyupgrade (modernize syntax)
     "B",    # flake8-bugbear
     "C4",   # flake8-comprehensions
-    "PT",   # flake8-pytest-style
     "SIM",  # flake8-simplify
 ]
 ignore = [
@@ -88,7 +85,6 @@ ignore = [
 
 [tool.ruff.lint.per-file-ignores]
 "gui/**" = ["F811"]  # redefinition of unused names (Kivy KV includes)
-"tests/**" = ["F811", "PT009"]
 "**/__init__.py" = ["F401"]  # imports here are deliberate re-exports
 
 [tool.ruff.lint.isort]
@@ -104,10 +100,4 @@ python_version = "3.11"
 warn_return_any = true
 warn_unused_configs = true
 ignore_missing_imports = true  # Kivy/KivyMD stubs are incomplete
-exclude = ["tests/", ".buildozer/", "venv/"]
-
-[tool.pytest.ini_options]
-testpaths = ["tests"]
-python_files = ["test_*.py"]
-python_functions = ["test_*"]
-addopts = "-v --tb=short"
+exclude = [".buildozer/", "venv/"]
