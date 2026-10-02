@@ -18,10 +18,10 @@ class SourcePickerScreen(Screen):
         yield CustomHeader()
         with Vertical(classes="dialog-overlay"), Vertical(classes="dialog-box"):
             yield Static("Switch Source", classes="title")
-            list_view = ListView(id="source-list")
-            for item in self._items:
-                list_view.append(ListItem(Label(item["label"]), id=item["id"]))
-            yield list_view
+            items = [
+                ListItem(Label(item["label"]), id=item["id"]) for item in self._items
+            ]
+            yield ListView(*items, id="source-list")
         yield Footer()
 
     def on_mount(self):
