@@ -52,21 +52,23 @@ Key bindings in the reader:
 ## Two frontends, one core
 
 - `main.py` — entry-point dispatcher: TUI on desktop, GUI on Android (`ANDROID_ARGUMENT`).
-- `tui/` — **Textual TUI**: `main.py` (app), `main_menu.py`, `browse.py`, `reader.py`, `library.py`, `download.py`, `shared.py`, `utils.py`, `novelfetch.tcss`.
-- `gui/` — **KivyMD GUI** (desktop + Android): `main.py`, `screens/` (home, browse, reader, chapter list, download picker/dialog, library, settings, history, update, search), `kv/` layout files, `data/` (icon, bundled Arabic font).
-- `core/` — shared framework: `progress.py`, `translation.py`, `epub.py`, `utils.py` (source dispatch), `paths.py` (data-dir resolution for frozen/AppImage/Android).
+- `tui/` — **Textual TUI**: `main.py` (app), `main_menu.py`, `browse.py`, `reader.py`, `library.py`, `download.py`, `source_picker.py`, `shared.py`, `utils.py`, `novelfetch.tcss`.
+- `gui/` — **KivyMD GUI** (desktop + Android): `main.py`, `screens/` (`main_screen`, `home_tab`, `search_tab`, `update`, `history`, `settings_tab`, `novel_list`, `chapter_list`, `reader`, `download_picker`, `download_dialog`, `source_picker`, `topbar`, `theme`, `app_settings`), `kv/` layout files, `data/` (icon, bundled Arabic font).
+- `core/` — shared framework: `progress.py`, `translation.py`, `epub.py`, `downloader.py`, `http_client.py`, `library.py`, `utils.py` (source dispatch), `paths.py` (data-dir resolution for frozen/AppImage/Android).
 - `sources/` — pluggable `Source` interface (`base.py`) and a `REGISTRY` of scrapers.
-- `novels/` — downloaded chapters, `progress.json`, `tracking.json`, cover cache.
+- `novels/` — downloaded chapters, per-novel `meta.json` / `cover.*`, `progress.json`, `tracking.json`.
 
 ## Pluggable sources
 
-The `Source` abstraction (`sources/base.py:1`) defines browsing, search, chapter fetching, and cover resolution; implementations are registered in `sources/__init__.py:5`:
+The `Source` abstraction (`sources/base.py:1`) defines browsing, search, chapter fetching, and cover resolution; implementations are registered in `sources/__init__.py:7`:
 
 | Source | Browse lists | Genres | Notes |
 |--------|-------------|--------|-------|
+| **NovelFire** | 9 | 47 | Throttled paging (`PAGE_DELAY = 0.4`) — novelfire.net returns 429 on burst paging |
+| **NovelPhoenix** | 9 | 55 | Condensed 79-column ASCII banner so it doesn't wrap |
 | **RoyalRoad** | 8 (hot, popular, latest, newest, completed, rising stars, ongoing, more) | 13 | AJAX-free chapter table |
-| **ScribbleHub** | 3 | 26 | Cloudflare-aware; lazy `curl_cffi` with httpx fallback (p4a-safe) |
-| **WuxiaSpot** | — | 41 | AJAX pagination (`fy.php`); search marked unreliable |
+| **ScribbleHub** | 4 (hot, latest, popular, completed) | 25 | Cloudflare-aware; lazy `curl_cffi` with httpx fallback (p4a-safe) |
+| **WuxiaSpot** | 7 | 48 | AJAX pagination (`fy.php`); search marked unreliable |
 
 New sources implement the same interface and register a key — no frontend changes needed.
 
@@ -97,10 +99,10 @@ The project uses two separate virtual environments:
 | Environment | Purpose | Created by |
 |-------------|---------|------------|
 | `myenv/` | TUI + code quality tools (Ruff, mypy, Pyright) | `make setup-tui` |
-| `android_env/` | KivyMD GUI + tests | `make setup-android` |
+| `android_env/` | KivyMD GUI (desktop + Android) | `make setup-android` |
 
 Dependencies are split across `pyproject.toml` optional groups:
-- **Core**: `httpx`, `beautifulsoup4`, `deep-translator`, `ebooklib`
+- **Core**: `httpx`, `beautifulsoup4`, `lxml`, `deep-translator`, `ebooklib`
 - **TUI**: `textual`, `curl_cffi`
 - **GUI**: `kivy`, `kivymd`, `arabic-reshaper`, `python-bidi`
 
@@ -110,14 +112,9 @@ Dependencies are split across `pyproject.toml` optional groups:
 
 **Architecture:**
 
-- `main.py` — entry-point dispatcher (TUI or GUI; defaults to TUI on desktop, GUI on Android)
-- `tui/` — Textual TUI frontend: `main.py` (app), `main_menu.py`, `browse.py`, `reader.py`, `library.py`, `download.py`, `shared.py`, `utils.py`, `novelfetch.tcss`
-- `gui/` — KivyMD GUI frontend (desktop + Android): `main.py`, `screens/` (browse, reader, chapter list, download, library, settings, history), `kv/`, `data/`
-- `core/` — shared framework: `progress.py`, `translation.py`, `epub.py`, `utils.py` (source dispatch), `paths.py`
-- `sources/` — pluggable Source interface; RoyalRoad, ScribbleHub, WuxiaSpot implementations
-- `novels/` — Downloaded chapters and `progress.json`
+The package layout is described once, in [Two frontends, one core](#two-frontends-one-core) above — `main.py` dispatches to either `tui/` or `gui/`, both of which sit on `core/` and `sources/`.
 
-The GUI is the richer frontend: a 5-tab `MDNavigationBar` (Home / Update / Search / History / Settings) plus per-novel browse flow. Settings persist to `app_settings.json`; update checks reconcile against `update_results.json`. Downloads run concurrently (semaphore 4) with a live progress bar.
+The GUI is the richer frontend: a 5-tab `MDNavigationBar` (Home / Search / Updates / History / Settings) plus per-novel browse flow. Settings persist to `app_settings.json`; update checks reconcile against `update_results.json`. Downloads run concurrently (`core/downloader.py` caps at 4) with a live progress bar.
 
 ---
 
@@ -143,7 +140,7 @@ make android-deploy   # deploy to connected device
 - [x] Resume from last chapter (progress.json)
 - [x] Search with auto-type and pagination
 - [x] Translation (Google Translate, 12 languages, RTL support)
-- [x] Multi-source architecture (RoyalRoad, ScribbleHub, WuxiaSpot)
+- [x] Multi-source architecture (NovelFire, NovelPhoenix, RoyalRoad, ScribbleHub, WuxiaSpot)
 - [x] Download dialog (All, Range, Translated)
 - [x] Offline reading mode
 - [x] Reading history across sessions
@@ -151,7 +148,6 @@ make android-deploy   # deploy to connected device
 - [x] APK build via Buildozer
 - [ ] Better text formatting (italics, line breaks, spacing)
 - [ ] Search filters (genre, status, rating)
-- [ ] Wire up the remaining preview read-progress styles (5 of 12 are preview-only)
 - [ ] Adding to AUR — blocked: AUR account registration disabled upstream; packages ready to push once sign-ups reopen
 
 ---
@@ -166,9 +162,10 @@ make setup
 make pre-commit-install
 
 # Daily development
-make run-kivy-dev        # Hot-reload KivyMD desktop
-make lint                # Check code quality
-make test                # Run test suite
+make run-tui            # Run the TUI app
+make run-kivy           # Run the KivyMD GUI app
+make lint               # Check code quality
+make format             # Auto-format code
 ```
 
 ### Available Commands
@@ -179,17 +176,22 @@ make test                # Run test suite
 | `make run-tui` | Run TUI app (myenv) |
 | `make run-kivy` | Run KivyMD GUI app (android_env) |
 | `make lint` | Run Ruff + mypy + Pyright |
-| `make format` | Auto-format code |
-| `make test` | Run test suite with coverage |
+| `make lint-fix` | Auto-fix lint issues |
+| `make format` | Auto-format code (ruff format + import sorting) |
+| `make format-check` | Check formatting without modifying |
 | `make android-debug` | Build debug APK |
+| `make android-release` | Build release APK |
 | `make android-deploy` | Deploy to connected device |
+| `make android-logcat` | Show device logcat |
+| `make android-clean` | Clean buildozer build artifacts |
+| `make pre-commit-run` | Run pre-commit on all files |
+| `make clean` | Remove build artifacts and caches |
 | `make bump-release VERSION=x.y.z` | Bump version in pyproject.toml + buildozer.spec |
 
 ### Development Tools
 
-- **Linting**: Ruff (replaces flake8/black/isort)
+- **Linting**: Ruff locally via `make lint`; CI keeps a flake8 syntax/undefined-name gate
 - **Type Checking**: Mypy + Pyright
-- **Testing**: Pytest with coverage (273 tests)
 - **Pre-commit**: Auto-format on commit
 
 ---
