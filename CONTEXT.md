@@ -30,3 +30,6 @@ Terms in use, to keep skills' output consistent with how the project actually ta
 
 Recorded under [`docs/adr/`](docs/adr/README.md). Add an ADR when a meaningful,
 non-obvious decision is made rather than burying it in prose here.
+
+- The repo ships **without an automated test suite** — scraper and UI correctness
+  is verified against the live app and live sites, not fixtures. See ADR 0003.

@@ -31,3 +31,9 @@ checking now resolve each package unambiguously.
   explicit.
 - The root `main.py` stays a thin dispatcher: TUI on desktop, GUI when packaged
   for Android (via `ANDROID_ARGUMENT`).
+
+## Later
+
+The `tests/conftest.py` named above was removed with the rest of the suite — see
+[ADR 0003](0003-retire-the-pytest-suite.md). The package split this record
+describes still stands.
