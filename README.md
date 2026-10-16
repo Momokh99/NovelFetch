@@ -76,7 +76,31 @@ New sources implement the same interface and register a key — no frontend chan
 
 ## Installation
 
-### Quick start
+### From PyPI
+
+Requires **Python 3.10+**.
+
+```bash
+pip install novelfetch              # terminal app (TUI)
+novelfetch-tui
+
+pip install "novelfetch[gui]"       # + KivyMD desktop GUI
+novelfetch-gui
+```
+
+The TUI is the primary frontend, so its dependencies (`textual`, `curl_cffi`) are
+installed by default and `pip install novelfetch` works out of the box. The KivyMD
+GUI is opt-in because it pulls in Kivy — use the `[gui]` extra for the desktop
+frontend, or the APK for Android.
+
+Note that installing puts the top-level modules `core`, `tui`, `gui`, and `sources`
+in `site-packages`. They are generic names and can collide with unrelated packages;
+if you hit an import conflict, install into a dedicated virtualenv.
+
+User data (novels, reading progress, settings) lives in `~/.novelfetch`, or
+`$NOVELFETCH_DATA_DIR` if you set it.
+
+### From source
 
 ```bash
 git clone https://github.com/Momokh99/NovelFetch.git
@@ -85,7 +109,7 @@ make setup          # creates both environments (TUI + GUI)
 make pre-commit-install
 ```
 
-### Running
+### Running from source
 
 ```bash
 make run-tui        # Textual TUI (terminal)
@@ -102,9 +126,8 @@ The project uses two separate virtual environments:
 | `android_env/` | KivyMD GUI (desktop + Android) | `make setup-android` |
 
 Dependencies are split across `pyproject.toml` optional groups:
-- **Core**: `httpx`, `beautifulsoup4`, `lxml`, `deep-translator`, `ebooklib`
-- **TUI**: `textual`, `curl_cffi`
-- **GUI**: `kivy`, `kivymd`, `arabic-reshaper`, `python-bidi`
+- **Core** (always installed): `httpx`, `beautifulsoup4`, `lxml`, `deep-translator`, `ebooklib`, `textual`, `curl_cffi`
+- **GUI** (`pip install "novelfetch[gui]"`): `kivy`, `kivymd`, `arabic-reshaper`, `python-bidi`
 
 ---
 
@@ -146,6 +169,7 @@ make android-deploy   # deploy to connected device
 - [x] Reading history across sessions
 - [x] EPUB export
 - [x] APK build via Buildozer
+- [x] PyPI distribution (TUI by default, GUI via the `[gui]` extra)
 - [ ] Better text formatting (italics, line breaks, spacing)
 - [ ] Search filters (genre, status, rating)
 - [ ] Adding to AUR — blocked: AUR account registration disabled upstream; packages ready to push once sign-ups reopen
@@ -187,6 +211,8 @@ make format             # Auto-format code
 | `make pre-commit-run` | Run pre-commit on all files |
 | `make clean` | Remove build artifacts and caches |
 | `make bump-release VERSION=x.y.z` | Bump version in pyproject.toml + buildozer.spec |
+| `make pkg` | Build the wheel + sdist into `dist/` and check their metadata |
+| `make pkg-publish` | Upload `dist/*` to PyPI (manual fallback for the publish workflow) |
 
 ### Development Tools
 

@@ -77,7 +77,11 @@ class NovelFetchApp(MDApp):
         from core.paths import ensure_data_dir
 
         android_user_data = self.user_data_dir if platform == "android" else None
-        ensure_data_dir(dev_root=_ROOT, android_user_data=android_user_data)
+        # Mirror tui/main.py: only anchor to _ROOT for a real source checkout.
+        # pip/AUR installs leave _ROOT in site-packages, which must fall back to
+        # ~/.novelfetch rather than writing into the install dir.
+        dev_root = _ROOT if os.path.isdir(os.path.join(_ROOT, ".git")) else None
+        ensure_data_dir(dev_root=dev_root, android_user_data=android_user_data)
         from gui.screens.app_settings import load_settings
 
         self._app_settings = load_settings()

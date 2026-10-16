@@ -1,0 +1,112 @@
+# Publishes the wheel + sdist to PyPI using Trusted Publishing (OIDC), so no
+# API token is stored in this repo. Kept separate from release.yml so a publish
+# never waits on the APK / AppImage / Windows builds.
+#
+# One-time setup (see docs/adr/0004-publish-to-pypi.md):
+#   * Create the `novelfetch` project on BOTH PyPI and TestPyPI.
+#   * On each, add a trusted publisher: repo Momokh99/NovelFetch,
+#     workflow pypi-publish.yml, environment `pypi` / `testpypi`.
+#   * Create matching GitHub environments with a required reviewer.
+#
+# Tag pushes publish to TestPyPI: PyPI versions are immutable, so rehearsing
+# the whole path against TestPyPI costs nothing and proves the trusted
+# publisher is wired up. Promote a release with a manual dispatch on the same
+# tag once TestPyPI looks right. After that, change the `environment` expression
+# below to send tag pushes straight to `pypi`.
+
+name: Publish to PyPI
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+  workflow_dispatch:
+    inputs:
+      repository:
+        description: 'Target index (tags always use testpypi)'
+        type: choice
+        options:
+          - testpypi
+          - pypi
+        default: testpypi
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: Validate release version
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Resolve and validate version
+        # Same check release.yml runs: the tag must match pyproject.toml and
+        # buildozer.spec, so a publish can never ship an unexpected version.
+        run: python packaging/release.py --check
+
+  build:
+    name: Build wheel + sdist
+    needs: [validate]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install build
+        run: python -m pip install --upgrade pip build twine
+
+      - name: Build wheel and sdist
+        run: python -m build
+
+      - name: Check distribution metadata
+        run: twine check dist/*
+
+      - name: Smoke test wheel
+        run: |
+          set -euo pipefail
+          python -m venv /tmp/novelfetch-venv
+          /tmp/novelfetch-venv/bin/pip install --quiet dist/*.whl
+          # Run the check from outside the repo root: `python -c` from here would
+          # put the checkout first on sys.path and check the source tree, not the
+          # wheel. See packaging/smoke_check.py.
+          cd /tmp
+          /tmp/novelfetch-venv/bin/python "$GITHUB_WORKSPACE/packaging/smoke_check.py"
+          test -x /tmp/novelfetch-venv/bin/novelfetch-tui
+          echo "wheel installs and imports cleanly"
+
+      - name: Upload wheel + sdist
+        uses: actions/upload-artifact@v4
+        with:
+          name: pypi-dist
+          path: dist/*
+          if-no-files-found: error
+
+  publish:
+    name: Publish to PyPI
+    needs: [validate, build]
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.repository || 'testpypi' }}
+    permissions:
+      # Trusted Publishing: PyPI verifies this OIDC token instead of a secret.
+      id-token: write
+    steps:
+      - name: Download distributions
+        uses: actions/download-artifact@v4
+        with:
+          name: pypi-dist
+          path: dist
+
+      - name: Publish
+        uses: pypa/gh-action-pypi-publish@release/v1

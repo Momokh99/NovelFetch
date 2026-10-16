@@ -52,10 +52,14 @@ jobs:
 
       - name: Smoke test wheel
         run: |
+          set -euo pipefail
           python -m venv /tmp/novelfetch-venv
           /tmp/novelfetch-venv/bin/pip install --quiet dist/*.whl
-          /tmp/novelfetch-venv/bin/python -c \
-            "from sources import REGISTRY; assert len(REGISTRY) == 3, f'got {len(REGISTRY)} sources'"
+          # Run the check from outside the repo root: `python -c` from here would
+          # put the checkout first on sys.path and check the source tree, not the
+          # wheel. See packaging/smoke_check.py.
+          cd /tmp
+          /tmp/novelfetch-venv/bin/python "$GITHUB_WORKSPACE/packaging/smoke_check.py"
           echo "wheel installs and imports cleanly"
 
       - name: Upload wheel + sdist
@@ -82,9 +86,10 @@ jobs:
         # Build the TUI first with only TUI deps installed. Installing .[gui]
         # would pull in kivy, whose PyInstaller hook initializes an OpenGL
         # context at build time and crashes headless Windows runners (GL 1.1).
+        # The TUI deps are mandatory, so a plain install is enough.
         run: |
           python -m pip install --upgrade pip
-          pip install pyinstaller ".[tui]"
+          pip install pyinstaller .
 
       - name: Build TUI binary (PyInstaller)
         run: pyinstaller --clean --noconfirm packaging/novelfetch-tui.spec

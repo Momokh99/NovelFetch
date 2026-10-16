@@ -3,7 +3,7 @@
 # ==============================================================================
 
 .DEFAULT_GOAL := help
-.PHONY: help setup setup-tui setup-android lint lint-fix format format-check run-tui run-kivy bump-release
+.PHONY: help setup setup-tui setup-android lint lint-fix format format-check run-tui run-kivy bump-release pkg pkg-publish
 
 help:  ## Display this help
 	@awk 'BEGIN {FS = ":.*##"; printf "\nUsage:\n  make \033[36m<target>\033[0m\n"} \
@@ -19,7 +19,7 @@ setup-tui:  ## Create myenv for the TUI and code-quality tools
 	python3 -m venv myenv
 	./myenv/bin/pip install --upgrade pip
 	./myenv/bin/pip install -r requirements.txt
-	./myenv/bin/pip install ruff mypy pyright pre-commit
+	./myenv/bin/pip install ruff mypy pyright pre-commit build twine
 	@echo "✅ TUI environment ready. Activate with: source myenv/bin/activate"
 
 setup-android:  ## Create android_env with system Kivy and GUI/UI test tools
@@ -85,6 +85,17 @@ pre-commit-run:  ## Run pre-commit on all files
 
 bump-release:  ## Bump version in pyproject.toml and buildozer.spec (usage: make bump-release VERSION=2.1.0)
 	./myenv/bin/python packaging/release.py --bump $(VERSION)
+
+# Targets are named pkg*, not build/dist: setuptools creates directories with
+# both names, and a target whose name is an existing directory is treated as
+# already up to date and silently does nothing.
+pkg:  ## Build the wheel + sdist into dist/
+	rm -rf dist/
+	./myenv/bin/python -m build
+	./myenv/bin/python -m twine check dist/*
+
+pkg-publish: pkg  ## Upload dist/* to PyPI (needs TWINE_USERNAME/TWINE_PASSWORD or ~/.pypirc)
+	./myenv/bin/python -m twine upload dist/*
 
 ##@ ────────────────────── Cleanup
 

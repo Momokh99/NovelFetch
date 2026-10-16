@@ -1,19 +1,26 @@
 [build-system]
-requires = ["setuptools>=68.0", "wheel"]
+# setuptools>=77 is required for the PEP 639 `license`/`license-files` fields.
+requires = ["setuptools>=77.0.3", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "novelfetch"
-version = "2.0.6"
+version = "2.0.7"
 description = "A novel fetching and reading application with TUI and Android (KivyMD) frontends"
 readme = "README.md"
-license = { file = "LICENSE" }
-requires-python = ">=3.9"
+license = "MIT"
+license-files = ["LICENSE"]
+# The sources/ modules use PEP 604 unions (`str | None`) in annotations that are
+# evaluated at def time, so 3.9 raises TypeError on import. curl_cffi (tui extra)
+# also needs >=3.10.
+requires-python = ">=3.10"
 authors = [
     { name = "Mohamed" },
 ]
 
-# Application dependencies (shared between TUI and Android)
+# Application dependencies. The TUI is the primary frontend, so its
+# dependencies are mandatory and `pip install novelfetch` yields a working
+# terminal app. The KivyMD GUI stays opt-in behind the `gui` extra.
 dependencies = [
     "httpx>=0.28.0",
     "beautifulsoup4>=4.14.0",
@@ -22,14 +29,14 @@ dependencies = [
     "lxml>=4.9.0",
     "deep-translator>=1.11.0",
     "EbookLib>=0.20",
+    "textual>=8.0.0",
+    # ~13 MB wheel, imported lazily by sources/scriblehub.py with an httpx
+    # fallback. Mandatory here so ScribbleHub works out of the box rather than
+    # silently degrading to a Cloudflare-blocked source.
+    "curl_cffi>=0.15.0",
 ]
 
 [project.optional-dependencies]
-# TUI-specific dependencies
-tui = [
-    "textual>=8.0.0",
-    "curl_cffi>=0.15.0",
-]
 # GUI-specific dependencies (KivyMD desktop + Android)
 gui = [
     "kivy>=2.3.0",
