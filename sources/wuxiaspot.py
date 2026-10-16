@@ -111,6 +111,7 @@ class WuxiaSpotSource(Source):
             if "novel" in parts:
                 idx = parts.index("novel")
                 return "/".join(parts[idx + 1 :])
+        return None
 
     def qualify_slug(self, slug: str) -> str:
         return f"wuxiaspot:{slug}"

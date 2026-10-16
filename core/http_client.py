@@ -29,7 +29,7 @@ def _is_android() -> bool:
     try:
         from kivy.utils import platform
 
-        return platform == "android"
+        return bool(platform == "android")
     except Exception:
         return False
 

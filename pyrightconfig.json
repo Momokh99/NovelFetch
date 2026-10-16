@@ -9,6 +9,19 @@
   "venv": "android_env",
   "pythonVersion": "3.14",
   "typeCheckingMode": "basic",
+  // p4a-recipes/ is vendored upstream python-for-android recipe code: it
+  // imports `sh` and `pythonforandroid`, neither of which exists in either
+  // venv, so every check against it is a false positive. It ships with the repo
+  // for buildozer, not as project source.
+  "exclude": [
+    "**/__pycache__",
+    ".buildozer",
+    "build",
+    "dist",
+    "myenv",
+    "android_env",
+    "p4a-recipes"
+  ],
   "extraPaths": [
     ".",
     "myenv/lib/python3.14/site-packages",

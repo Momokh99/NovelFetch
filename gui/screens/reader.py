@@ -492,7 +492,7 @@ class ReaderScreen(MDScreen):
         if app is not None:
             try:
                 color = app.theme_cls.onSurfaceColor
-                if isinstance(color, (list, tuple)) and len(color) >= 3:
+                if isinstance(color, list | tuple) and len(color) >= 3:
                     return list(color)
             except Exception:
                 pass

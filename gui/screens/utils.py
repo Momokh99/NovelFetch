@@ -506,6 +506,7 @@ _shared_http_client = None
 # _download_cover, so it stays safe across async_loop restarts.
 _COVER_INFLIGHT: dict[str, "asyncio.Future[str]"] = {}
 _COVER_LOCK: asyncio.Lock | None = None
+_COVER_LOCK_LOOP: asyncio.AbstractEventLoop | None = None
 
 
 def _get_cover_lock() -> asyncio.Lock:
@@ -516,13 +517,16 @@ def _get_cover_lock() -> asyncio.Lock:
     the old lock belongs to a dead loop and raises ``RuntimeError``.  This
     helper creates a fresh lock when the loop changes.
     """
-    global _COVER_LOCK
+    global _COVER_LOCK, _COVER_LOCK_LOOP
     try:
         loop = asyncio.get_running_loop()
     except RuntimeError:
         loop = None
-    if _COVER_LOCK is None or (loop is not None and _COVER_LOCK._loop is not loop):
+    # The loop the cached lock was built for is tracked alongside it rather than
+    # read back off the lock (asyncio.Lock._loop is private and version-fragile).
+    if _COVER_LOCK is None or (loop is not None and _COVER_LOCK_LOOP is not loop):
         _COVER_LOCK = asyncio.Lock()
+        _COVER_LOCK_LOOP = loop
     return _COVER_LOCK
 
 

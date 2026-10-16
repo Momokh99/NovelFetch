@@ -16,7 +16,7 @@ class ScribbleHubSource(Source):
     }
 
     def __init__(self):
-        self._blocked = False
+        self._blocked: bool = False
         # Lazily-created, reused across calls (only when curl_cffi is
         # unavailable) so the fallback path keeps one pooled/keep-alive
         # connection instead of paying a fresh TCP+TLS handshake, plus a
@@ -154,6 +154,7 @@ class ScribbleHubSource(Source):
                 idx = parts.index("series")
                 slug = "/".join(parts[idx + 1 :]).rstrip("/")
                 return slug
+        return None
 
     def qualify_slug(self, slug: str) -> str:
         return f"scribblehub:{slug}"

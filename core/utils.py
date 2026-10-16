@@ -10,9 +10,10 @@ import time
 from collections import OrderedDict
 
 from sources import REGISTRY
+from sources.base import Source
 
 
-def _get_source(slug):
+def _get_source(slug: str) -> Source | None:
     source_name = slug.split(":", 1)[0] if ":" in slug else None
     if source_name:
         return REGISTRY.get(source_name)
@@ -28,7 +29,9 @@ _chapter_cache: OrderedDict[str, tuple[float, list[dict[str, object]]]] = Ordere
 _chapter_cache_lock: asyncio.Lock | None = None
 
 
-async def _get_chapters(source, slug, ttl=300, fresh: bool = False):
+async def _get_chapters(
+    source: Source, slug: str, ttl: float = 300, fresh: bool = False
+) -> list[dict[str, object]]:
     """Chapter list for a novel.
 
     When the source can build a chapter URL from a number alone, the list is
@@ -61,7 +64,9 @@ async def _get_chapters(source, slug, ttl=300, fresh: bool = False):
         return chapters
 
 
-async def _resolve_chapters(source, slug, fresh: bool) -> list:
+async def _resolve_chapters(
+    source: Source, slug: str, fresh: bool
+) -> list[dict[str, object]]:
     """A derived ``1..count`` list when the source can offer one, else a fetch."""
     if not fresh and source.chapter_url(slug, 1) is not None:
         try:

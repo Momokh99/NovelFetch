@@ -112,7 +112,7 @@ class LocalChapterScreen(Screen):
     def __init__(self, slug: str):
         super().__init__()
         self.slug = slug
-        self.files = []
+        self.files: list[str] = []
 
     def compose(self):
         yield CustomHeader()

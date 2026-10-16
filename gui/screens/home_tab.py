@@ -2,6 +2,7 @@
 import asyncio
 import math
 import os
+from typing import cast
 
 from kivy.clock import Clock
 from kivy.metrics import dp, sp
@@ -421,17 +422,19 @@ class _TouchPassThrough(FloatLayout):
     def on_touch_down(self, touch) -> bool | None:
         if self.opacity < 0.01:
             return False
-        return super().on_touch_down(touch)
+        # Kivy ships no stubs, so super() is untyped here; cast keeps the
+        # declared return type honest without coercing the value.
+        return cast(bool, super().on_touch_down(touch))
 
     def on_touch_move(self, touch) -> bool | None:
         if self.opacity < 0.01:
             return False
-        return super().on_touch_move(touch)
+        return cast(bool, super().on_touch_move(touch))
 
     def on_touch_up(self, touch) -> bool | None:
         if self.opacity < 0.01:
             return False
-        return super().on_touch_up(touch)
+        return cast(bool, super().on_touch_up(touch))
 
 
 class _LongPressMixin(Widget):
