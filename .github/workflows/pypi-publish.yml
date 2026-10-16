@@ -101,6 +101,13 @@ jobs:
     permissions:
       # Trusted Publishing: PyPI verifies this OIDC token instead of a secret.
       id-token: write
+    env:
+      # The action defaults to upload.pypi.org, so the index has to be chosen
+      # explicitly — `environment` only picks which publisher PyPI consults, it
+      # does not redirect the upload. Tag pushes (no inputs) go to TestPyPI;
+      # production PyPI takes a dispatch with repository=pypi, because versions
+      # there are immutable.
+      TARGET_URL: ${{ inputs.repository == 'pypi' && 'https://upload.pypi.org/legacy/' || 'https://test.pypi.org/legacy/' }}
     steps:
       - name: Download distributions
         uses: actions/download-artifact@v4
@@ -108,5 +115,10 @@ jobs:
           name: pypi-dist
           path: dist
 
+      - name: Show target index
+        run: echo "Publishing to $TARGET_URL"
+
       - name: Publish
         uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          repository-url: ${{ env.TARGET_URL }}
