@@ -1,6 +1,7 @@
 """Textual TUI application (terminal frontend)."""
 
 import os
+from importlib.metadata import PackageNotFoundError, version
 
 from textual.app import App
 
@@ -14,7 +15,14 @@ class NovelFetchApp(App):
     def __init__(self):
         super().__init__()
         self.current_source = None
-        self.version = "1.0.0"
+        # Read from installed package metadata rather than hardcoding, so the
+        # header cannot drift from the released version. Empty when running
+        # from a source checkout that was never installed; CustomHeader then
+        # drops the version suffix instead of showing a wrong one.
+        try:
+            self.version = version("novelfetch")
+        except PackageNotFoundError:
+            self.version = ""
 
     def on_mount(self):
         self.push_screen(MainMenu())
