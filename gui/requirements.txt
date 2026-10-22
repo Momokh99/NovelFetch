@@ -1,8 +1,17 @@
 # Desktop dev deps for the KivyMD app. On Arch Linux, do NOT pip-install kivy
 # (no cp314 wheel): install the system package instead and use a venv with
 # --system-site-packages:
-#   sudo pacman -S python-kivy
+#   sudo pacman -S python-kivy python-pygame
 #   python3.14 -m venv --system-site-packages android_env
+#
+# Traps to avoid:
+#   * A `python3` on PATH can shadow /usr/bin/python3 (e.g. mise/pyenv);
+#     system Kivy is only importable by the OS interpreter, so the venv is
+#     silently created without kivy. setup-android probes for it; override with
+#     `make setup-android PYTHON=/usr/bin/python3.14` otherwise.
+#   * A pip-built Kivy has USE_SDL2=0 and falls back to the pygame provider,
+#     so pygame must be present too. pygame has no cp315 wheel, so 3.15 is not a
+#     supported interpreter for the GUI environment.
 kivymd==2.0.0
 httpx>=0.28.0
 curl_cffi>=0.15.0

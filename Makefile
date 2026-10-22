@@ -3,6 +3,9 @@
 # ==============================================================================
 
 .DEFAULT_GOAL := help
+# Override on the command line when the interpreter on PATH is not the one
+# carrying Kivy (e.g. `make setup-android PYTHON=/usr/bin/python3.14`).
+PYTHON ?= python3
 .PHONY: help setup setup-tui setup-android lint lint-fix format format-check run-tui run-kivy bump-release pkg pkg-publish
 
 help:  ## Display this help
@@ -16,19 +19,28 @@ setup: setup-tui setup-android  ## Create both development environments
 	@echo "✅ Development environments ready: myenv (TUI/tools), android_env (Kivy/tests)"
 
 setup-tui:  ## Create myenv for the TUI and code-quality tools
-	python3 -m venv myenv
+	$(PYTHON) -m venv myenv
 	./myenv/bin/pip install --upgrade pip
 	./myenv/bin/pip install -r requirements.txt
 	./myenv/bin/pip install ruff mypy pyright pre-commit build twine
 	@echo "✅ TUI environment ready. Activate with: source myenv/bin/activate"
 
 setup-android:  ## Create android_env with system Kivy and GUI/UI test tools
-	python3 -m venv --system-site-packages android_env
-	./android_env/bin/pip install --upgrade pip
-	./android_env/bin/pip install -r gui/requirements.txt
-	./android_env/bin/pip install watchdog
-	@echo "✅ GUI environment ready. Activate with: source android_env/bin/activate"
-	@echo "   Arch Linux requires the system package: sudo pacman -S python-kivy"
+	@if /usr/bin/python3 -c 'import kivy' 2>/dev/null; then \
+		PYBIN=/usr/bin/python3; \
+	elif $(PYTHON) -c 'import kivy' 2>/dev/null; then \
+		PYBIN="$(PYTHON)"; \
+	else \
+		echo "⚠️  no interpreter with kivy is importable; falling back to $(PYTHON)" >&2; \
+		PYBIN="$(PYTHON)"; \
+	fi; \
+	"$$PYBIN" -m venv --system-site-packages android_env; \
+	./android_env/bin/pip install --upgrade pip; \
+	./android_env/bin/pip install -r gui/requirements.txt; \
+	./android_env/bin/pip install watchdog; \
+	echo "✅ GUI environment ready. Activate with: source android_env/bin/activate"; \
+	echo "   interpreter: $$PYBIN"; \
+	./android_env/bin/python -c 'import kivy; print("   Kivy:        ", kivy.__version__); print("   Kivy source: ", kivy.__file__)'
 
 ##@ ────────────────────── Linting & Formatting
 

@@ -17,11 +17,37 @@ def _ensure_kivy_window_backend():
     """
     try:
         importlib.import_module("kivy.core.window.window_sdl2")
+        return
     except ImportError:
-        stub: Any = types.ModuleType("kivy.core.window.window_sdl3")
-        stub.WindowSDL = object
-        sys.modules["kivy.core.window.window_sdl3"] = stub
-        _fix_pygame_window_resize()
+        pass
+
+    # KivyMD imports window_sdl2 then window_sdl3 at module load time. On a
+    # USE_SDL2=0 build (Arch's pygame-based Kivy, or any pip wheel built
+    # without SDL2) neither provider exists, so register a stand-in so the
+    # import still succeeds. The stand-in does NOT create a real window; the
+    # pygame provider must handle that below.
+    stub: Any = types.ModuleType("kivy.core.window.window_sdl3")
+    stub.WindowSDL = object
+    sys.modules["kivy.core.window.window_sdl3"] = stub
+
+    if _fix_pygame_window_resize():
+        return
+
+    # No real window provider is available (no SDL2 build and no pygame).
+    # Exit with an actionable message instead of Kivy's "Unable to find any
+    # valuable Window provider" traceback.
+    raise SystemExit(
+        "NovelFetch GUI could not find a usable Kivy window provider.\n"
+        "This android_env was built against an interpreter that has no\n"
+        "SDL2-backed Kivy (bootstrap compile, USE_SDL2=0) and no pygame.\n"
+        "\n"
+        "Rebuild the environment against the system interpreter on Arch:\n"
+        "  sudo pacman -S python-kivy python-pygame\n"
+        "  rm -rf android_env\n"
+        "  make setup-android\n"
+        "or, on any OS, pin a 3.10-3.14 interpreter:\n"
+        "  make setup-android PYTHON=/usr/bin/python3.14\n"
+    )
 
 
 def _fix_pygame_window_resize():
@@ -36,8 +62,14 @@ def _fix_pygame_window_resize():
     ``pygame.display.get_window_size()`` does track the live surface, so
     swap it in for the duration of ``create_window()``.
     """
-    import pygame
-    from kivy.core.window.window_pygame import WindowPygame
+    try:
+        import pygame  # type: ignore
+    except ImportError:
+        return False
+    try:
+        from kivy.core.window.window_pygame import WindowPygame
+    except ImportError:
+        return False
 
     original = WindowPygame.create_window
     real_info = pygame.display.Info
@@ -60,6 +92,8 @@ def _fix_pygame_window_resize():
             pygame.display.Info = real_info
 
     WindowPygame.create_window = create_window
+
+    return True
 
 
 def _run_gui():
